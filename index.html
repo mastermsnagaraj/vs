@@ -242,11 +242,49 @@
             'item6': { stockKg: 7.5, stockUnits: 0 },
         }; 
 
-        let cart = []; // [{itemId, item (menu item object), quantity, unit, price, pricePerUnit}]
-        let salesHistory = []; // Temporary sales log
+        let cart = [];
+        let salesHistory = [];
 
         let qrCodeBase64 = null;
-        let nextItemId = 7; // For generating new unique IDs
+        let nextItemId = 7;
+        let initialInventory = {};
+
+        const STORAGE_KEYS = {
+            menuItems: 'vs_menuItems',
+            inventory: 'vs_inventory',
+            cart: 'vs_cart',
+            salesHistory: 'vs_salesHistory',
+            qr: 'vs_qrCodeBase64',
+            nextId: 'vs_nextItemId',
+            initialInv: 'vs_initialInventory'
+        };
+        function lsGet(k, d) {
+            try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (_) { return d; }
+        }
+        function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} }
+        function loadStateFromStorage() {
+            const mi = lsGet(STORAGE_KEYS.menuItems, null);
+            const inv = lsGet(STORAGE_KEYS.inventory, null);
+            const ct = lsGet(STORAGE_KEYS.cart, null);
+            const sh = lsGet(STORAGE_KEYS.salesHistory, null);
+            const qr = localStorage.getItem(STORAGE_KEYS.qr);
+            const nid = lsGet(STORAGE_KEYS.nextId, null);
+            const iinv = lsGet(STORAGE_KEYS.initialInv, null);
+            if (mi) menuItems = mi;
+            if (inv) inventory = inv;
+            if (ct) cart = ct;
+            if (sh) salesHistory = sh;
+            if (qr) qrCodeBase64 = qr;
+            if (nid) nextItemId = nid;
+            if (iinv) initialInventory = iinv;
+        }
+        function persistMenuItems() { lsSet(STORAGE_KEYS.menuItems, menuItems); }
+        function persistInventory() { lsSet(STORAGE_KEYS.inventory, inventory); }
+        function persistCart() { lsSet(STORAGE_KEYS.cart, cart); }
+        function persistSalesHistory() { lsSet(STORAGE_KEYS.salesHistory, salesHistory); }
+        function persistNextItemId() { lsSet(STORAGE_KEYS.nextId, nextItemId); }
+        function persistQr() { try { localStorage.setItem(STORAGE_KEYS.qr, qrCodeBase64 || ''); } catch (_) {} }
+        function persistInitialInventory() { lsSet(STORAGE_KEYS.initialInv, initialInventory); }
 
         // ==================================== UTILITIES ====================================
 
@@ -327,9 +365,14 @@
 
         document.addEventListener('DOMContentLoaded', () => {
             // No Firebase init needed. Simply start rendering.
+            loadStateFromStorage();
+            if (!initialInventory || Object.keys(initialInventory).length === 0) {
+                initialInventory = JSON.parse(JSON.stringify(inventory));
+                persistInitialInventory();
+            }
             renderMenu();
             renderCart();
-            showToast("Application loaded. Data is not persistent.", 'error');
+            showToast("Data loaded from local storage.", 'success');
             const langSel = document.getElementById('lang-switch');
             if (langSel) {
                 langSel.value = currentLang;
@@ -339,6 +382,7 @@
                     renderMenu();
                 };
             }
+            initialInventory = JSON.parse(JSON.stringify(inventory));
         });
 
 
@@ -383,7 +427,8 @@
 
             try {
                 const base64Data = await fileToBase64(file);
-                qrCodeBase64 = base64Data; // Update local state
+                qrCodeBase64 = base64Data;
+                persistQr();
                 
                 const preview = document.getElementById('qr-image-preview');
                 const placeholder = document.getElementById('qr-placeholder');
@@ -463,6 +508,7 @@
             cart.splice(index, 1);
             renderCart();
             showToast("Item removed from cart.", 'error');
+            persistCart();
         }
 
         /**
@@ -473,6 +519,7 @@
                 cart = [];
                 renderCart();
                 showToast("Cart cleared!", 'success');
+                persistCart();
             }
         }
 
@@ -632,6 +679,8 @@
                 })),
             };
             salesHistory.push(saleRecord);
+            persistSalesHistory();
+            persistInventory();
 
             // 3. Success and Cleanup
             document.getElementById('payment-modal').classList.add('hidden');
@@ -737,7 +786,7 @@
                 return;
             }
 
-            menuItems.forEach(item => {
+            menuItems.filter(item => item.enabled !== false).forEach(item => {
                 const stockKg = inventory[item.id]?.stockKg || 0;
                 const stockUnits = inventory[item.id]?.stockUnits || 0;
                 
@@ -819,6 +868,7 @@
                         <input type="number" id="priceKg" placeholder="Price per Kg (e.g., 50)" step="0.01" min="0" required class="p-2 border rounded-lg">
                         <input type="number" id="priceGram" placeholder="Price per Gram (e.g., 0.05)" step="0.0001" min="0" class="p-2 border rounded-lg">
                         <input type="number" id="priceUnit" placeholder="Price per Unit (e.g., 5)" step="0.01" min="0" class="p-2 border rounded-lg">
+                        <label class="flex items-center space-x-2 md:col-span-2 text-sm text-gray-700"><input type="checkbox" id="enableListing" class="rounded" checked><span>Enable listing</span></label>
                         <div class="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
                             <input type="file" id="imageFile" accept="image/*" class="p-2 border rounded-lg" />
                             <div class="flex items-center space-x-3">
@@ -855,6 +905,7 @@
                     priceKg: parseFloat(document.getElementById('priceKg').value),
                     priceGram: parseFloat(document.getElementById('priceGram').value) || 0,
                     priceUnit: parseFloat(document.getElementById('priceUnit').value) || 0,
+                    enabled: document.getElementById('enableListing').checked,
                 };
                 const file = imgInput.files[0];
                 if (file) {
@@ -882,17 +933,32 @@
                                     <span class="inline-block bg-green-100 text-green-800 px-2 py-0.5 rounded mr-1">Kg: ₹${(item.priceKg||0).toFixed(2)}</span>
                                     <span class="inline-block bg-teal-100 text-teal-800 px-2 py-0.5 rounded mr-1">g: ₹${(item.priceGram||((item.priceKg||0)/1000)).toFixed(2)}</span>
                                     <span class="inline-block bg-blue-100 text-blue-800 px-2 py-0.5 rounded">Unit: ₹${(item.priceUnit||0).toFixed(2)}</span>
+                                    <span class="inline-block ${item.enabled!==false?'bg-emerald-100 text-emerald-800':'bg-gray-200 text-gray-700'} px-2 py-0.5 rounded ml-1">${item.enabled!==false?'Enabled':'Disabled'}</span>
                                 </div>
                             </div>
                             <div class="mt-2 flex space-x-2">
                                 <button onclick="editMenuItem('${item.id}')" class="px-3 py-1 text-sm bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow">Edit</button>
                                 <button onclick="deleteMenuItem('${item.id}')" class="px-3 py-1 text-sm bg-red-600 hover:bg-red-700 text-white rounded-lg shadow">Delete</button>
+                                <button onclick="toggleItemEnabled('${item.id}')" class="px-3 py-1 text-sm ${item.enabled!==false?'bg-gray-600 hover:bg-gray-700':'bg-emerald-600 hover:bg-emerald-700'} text-white rounded-lg shadow">${item.enabled!==false?'Disable':'Enable'}</button>
                             </div>
                         </div>
                     </div>
                 `;
             });
             body.innerHTML += `<div class="mt-6">${listHtml}</div>`;
+
+            window.toggleItemEnabled = (itemId) => {
+                const it = menuItems.find(i => i.id === itemId);
+                if (!it) return;
+                const willDisable = it.enabled !== false;
+                it.enabled = willDisable ? false : true;
+                cart = cart.filter(ci => ci.itemId !== itemId);
+                persistMenuItems();
+                persistCart();
+                renderMenuManager(document.getElementById('modal-body'));
+                renderMenu();
+                showToast(willDisable ? 'Item disabled for listing.' : 'Item enabled for listing.', willDisable ? 'error' : 'success');
+            };
         }
         
         /**
@@ -909,6 +975,9 @@
             // Re-render the menu manager and the main menu
             renderMenuManager(document.getElementById('modal-body'));
             renderMenu();
+            persistMenuItems();
+            persistInventory();
+            persistNextItemId();
         }
 
         /**
@@ -925,6 +994,9 @@
             renderMenuManager(document.getElementById('modal-body')); // Re-render manager
             renderMenu(); // Re-render main menu
             renderCart(); // Re-render cart
+            persistMenuItems();
+            persistInventory();
+            persistCart();
         }
 
         /**
@@ -970,6 +1042,7 @@
                                 <span class="text-xs text-gray-500">Current/Selected image</span>
                             </div>
                         </div>
+                        <label class="flex items-center space-x-2 md:col-span-2 text-sm text-gray-700"><input type="checkbox" id="edit-enabled" class="rounded" ${item.enabled!==false?'checked':''}><span>Enable listing</span></label>
                         <div class="md:col-span-2 flex justify-end space-x-3 mt-2">
                             <button type="button" id="edit-cancel" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded-lg">Cancel</button>
                             <button type="submit" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg">Save Changes</button>
@@ -1000,11 +1073,13 @@
                 item.priceKg = parseFloat(document.getElementById('edit-priceKg').value) || 0;
                 item.priceGram = parseFloat(document.getElementById('edit-priceGram').value) || 0;
                 item.priceUnit = parseFloat(document.getElementById('edit-priceUnit').value) || 0;
+                item.enabled = document.getElementById('edit-enabled').checked;
                 if (newImageDataUrl) item.imageUrl = newImageDataUrl;
 
                 showToast('Item updated successfully!', 'success');
                 renderMenuManager(body);
                 renderMenu();
+                persistMenuItems();
             };
         }
 
@@ -1074,6 +1149,7 @@
             showToast("Inventory updated successfully!", 'success');
             renderInventoryManager(document.getElementById('modal-body'));
             renderMenu();
+            persistInventory();
         }
 
 
@@ -1096,6 +1172,15 @@
                     <button onclick="generateReport('monthlySales')" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg transition duration-200">
                         Generate All Sales History Report (அனைத்து விற்பனை அறிக்கை)
                     </button>
+                    <button onclick="generateReport('detailedSales')" class="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-4 rounded-lg transition duration-200">
+                        Generate Detailed Sales Report (விற்பனை விரிவான அறிக்கை)
+                    </button>
+                    <button onclick="generateReport('itemSummary')" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-lg transition duration-200">
+                        Generate Item-wise Sales Summary (பொருள் வாரியாக விற்பனை)
+                    </button>
+                    <button onclick="generateReport('stockMovement')" class="w-full bg-amber-600 hover:bg-amber-700 text-white font-bold py-3 px-4 rounded-lg transition duration-200">
+                        Generate Stock Movement Report (பங்கு மாற்றம்)
+                    </button>
                     <div id="report-message" class="text-center mt-4 text-sm text-gray-600">Reports will be opened in a print-friendly window (Print to PDF).</div>
                 </div>
             `;
@@ -1116,6 +1201,12 @@
                 reportHtml = generateDailyStockReport();
             } else if (type === 'monthlySales') {
                 reportHtml = generateAllSalesHistoryReport();
+            } else if (type === 'detailedSales') {
+                reportHtml = generateDetailedSalesReport();
+            } else if (type === 'itemSummary') {
+                reportHtml = generateItemWiseSalesSummary();
+            } else if (type === 'stockMovement') {
+                reportHtml = generateStockMovementReport();
             }
 
             document.getElementById('report-content').innerHTML = reportHtml;
@@ -1211,6 +1302,146 @@
                         <span>Total Sales (மொத்தம்)</span>
                         <span>${formatCurrency(totalSales)}</span>
                     </div>
+                    <hr class="border-t-2 border-black mt-4">
+                    <p class="text-center text-xs mt-4">Report Generated by POS System.</p>
+                </div>
+            `;
+            return html;
+        }
+
+        function generateDetailedSalesReport() {
+            let html = `
+                <div class="p-6">
+                    <h1 class="text-3xl font-extrabold text-center mb-1">V S TRADERS</h1>
+                    <h2 class="text-xl font-semibold text-center mb-4">Detailed Sales Report</h2>
+                    <hr class="border-t-2 border-black mb-4">
+            `;
+            if (salesHistory.length === 0) {
+                html += '<p class="text-center py-4 text-sm">No sales recorded during this session.</p>';
+            } else {
+                salesHistory.forEach(record => {
+                    html += `
+                        <div class="mb-4">
+                            <div class="flex font-bold mb-1">
+                                <span class="w-1/2">Sale: ${record.timestamp.toLocaleString()}</span>
+                                <span class="w-1/2 text-right">Mode: ${record.paymentMode.toUpperCase()}</span>
+                            </div>
+                            <div class="flex font-bold">
+                                <span class="w-1/2">Item (பொருள்)</span>
+                                <span class="w-1/4 text-center">Qty/Unit</span>
+                                <span class="w-1/4 text-right">Line Total</span>
+                            </div>
+                            <hr class="border-t border-gray-400 mb-1">
+                    `;
+                    record.items.forEach(it => {
+                        const fullItem = menuItems.find(m => m.id === it.id) || { nameTa: '' };
+                        const quantityText = it.unit === 'units' ? `${it.quantity} Unit(s)` : `${it.quantity} ${it.unit}`;
+                        html += `
+                            <div class="flex text-sm py-1">
+                                <span class="w-1/2">${it.name} (${fullItem.nameTa})</span>
+                                <span class="w-1/4 text-center">${quantityText}</span>
+                                <span class="w-1/4 text-right">${formatCurrency(it.price)}</span>
+                            </div>
+                        `;
+                    });
+                    html += `
+                            <div class="flex justify-between font-bold mt-2">
+                                <span>Sale Total</span>
+                                <span>${formatCurrency(record.totalAmount)}</span>
+                            </div>
+                            <hr class="border-t border-gray-300 mt-2">
+                        </div>
+                    `;
+                });
+            }
+            html += `
+                    <p class="text-center text-xs mt-4">Report Generated by POS System.</p>
+                </div>
+            `;
+            return html;
+        }
+
+        function generateItemWiseSalesSummary() {
+            const summary = {};
+            salesHistory.forEach(record => {
+                record.items.forEach(it => {
+                    if (!summary[it.id]) summary[it.id] = { qtyKg: 0, qtyUnits: 0, revenue: 0 };
+                    if (it.unit === 'grams') summary[it.id].qtyKg += (it.quantity || 0) / 1000;
+                    else if (it.unit === 'kilograms') summary[it.id].qtyKg += it.quantity || 0;
+                    else if (it.unit === 'units') summary[it.id].qtyUnits += it.quantity || 0;
+                    summary[it.id].revenue += it.price || 0;
+                });
+            });
+            let html = `
+                <div class="p-6">
+                    <h1 class="text-3xl font-extrabold text-center mb-1">V S TRADERS</h1>
+                    <h2 class="text-xl font-semibold text-center mb-4">Item-wise Sales Summary</h2>
+                    <hr class="border-t-2 border-black mb-4">
+                    <div class="flex font-bold mb-1">
+                        <span class="w-2/5">Item (பொருள்)</span>
+                        <span class="w-1/5 text-center">Sold (Kg)</span>
+                        <span class="w-1/5 text-center">Sold (Units)</span>
+                        <span class="w-1/5 text-right">Revenue</span>
+                    </div>
+                    <hr class="border-t border-gray-400 mb-1">
+            `;
+            const ids = Object.keys(summary);
+            if (ids.length === 0) {
+                html += '<p class="text-center py-4 text-sm">No sales recorded during this session.</p>';
+            } else {
+                ids.forEach(id => {
+                    const m = menuItems.find(mi => mi.id === id) || { nameEn: id, nameTa: '' };
+                    const s = summary[id];
+                    html += `
+                        <div class="flex text-sm py-1">
+                            <span class="w-2/5">${m.nameEn} (${m.nameTa})</span>
+                            <span class="w-1/5 text-center">${s.qtyKg.toFixed(2)}</span>
+                            <span class="w-1/5 text-center">${s.qtyUnits}</span>
+                            <span class="w-1/5 text-right">${formatCurrency(s.revenue)}</span>
+                        </div>
+                    `;
+                });
+            }
+            html += `
+                    <hr class="border-t-2 border-black mt-4">
+                    <p class="text-center text-xs mt-4">Report Generated by POS System.</p>
+                </div>
+            `;
+            return html;
+        }
+
+        function generateStockMovementReport() {
+            let html = `
+                <div class="p-6">
+                    <h1 class="text-3xl font-extrabold text-center mb-1">V S TRADERS</h1>
+                    <h2 class="text-xl font-semibold text-center mb-4">Stock Movement Report</h2>
+                    <hr class="border-t-2 border-black mb-4">
+                    <div class="flex font-bold mb-1">
+                        <span class="w-2/5">Item (பொருள்)</span>
+                        <span class="w-1/5 text-center">Initial Kg</span>
+                        <span class="w-1/5 text-center">Current Kg</span>
+                        <span class="w-1/5 text-right">Change Kg</span>
+                    </div>
+                    <hr class="border-t border-gray-400 mb-1">
+            `;
+            menuItems.forEach(item => {
+                const init = initialInventory[item.id]?.stockKg;
+                const cur = inventory[item.id]?.stockKg;
+                const hasInit = typeof init === 'number';
+                const hasCur = typeof cur === 'number';
+                const i = hasInit ? init : 0;
+                const c = hasCur ? cur : 0;
+                const ch = hasInit && hasCur ? (i - c) : 0;
+                html += `
+                    <div class="flex text-sm py-1">
+                        <span class="w-2/5">${item.nameEn} (${item.nameTa})</span>
+                        <span class="w-1/5 text-center">${hasInit ? i.toFixed(2) : 'N/A'}</span>
+                        <span class="w-1/5 text-center">${hasCur ? c.toFixed(2) : 'N/A'}</span>
+                        <span class="w-1/5 text-right">${hasInit && hasCur ? ch.toFixed(2) : 'N/A'}</span>
+                    </div>
+                `;
+            });
+            html += `
                     <hr class="border-t-2 border-black mt-4">
                     <p class="text-center text-xs mt-4">Report Generated by POS System.</p>
                 </div>
