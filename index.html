@@ -757,10 +757,10 @@
                     selectOptions += `<option value="units">Unit (${formatCurrency(item.priceUnit)}/Unit)</option>`;
                 }
 
-                const imageUrl = item.imageUrl || `https://placehold.co/200x150/4CAF50/FFFFFF?text=${item.nameEn.substring(0, 4).toUpperCase()}`;
+                const imageUrl = item.imageUrl || `https://placehold.co/300x200/4CAF50/FFFFFF?text=${item.nameEn.substring(0, 4).toUpperCase()}`;
 
                 card.innerHTML = `
-                    <img src="${imageUrl}" alt="${getDisplayName(item)}" onerror="this.onerror=null;this.src='https://placehold.co/200x150/A0A0A0/FFFFFF?text=Veg';" class="w-full h-32 object-cover">
+                    <img src="${imageUrl}" alt="${getDisplayName(item)}" onerror="this.onerror=null;this.src='https://placehold.co/300x200/A0A0A0/FFFFFF?text=Veg';" class="w-full h-40 object-cover">
                     <div class="p-3">
                         <h4 class="text-lg font-bold text-gray-800 truncate">${getDisplayName(item)}</h4>
                         <p class="text-xs text-green-700 font-medium">${getSecondaryName(item)}</p>
