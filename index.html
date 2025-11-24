@@ -14,10 +14,16 @@
             /* 2. Show Bill Area: Make the receipt content visible */
             .printable-bill-area, .printable-bill-area * { 
                 visibility: visible; 
-                -webkit-print-color-adjust: exact !important; /* Force colors/backgrounds (e.g., green total) */
+                /* CRUCIAL: Force colors/backgrounds (e.g., green total) */
+                -webkit-print-color-adjust: exact !important; 
                 color-adjust: exact !important;
             }
             
+            /* FIX FOR MISSING TEXT: Force all invoice text to black */
+            .printable-bill-area, .printable-bill-area * {
+                color: #000 !important;
+            }
+
             /* 3. Position Bill Area: Ensure it starts at the top left */
             .printable-bill-area { 
                 position: absolute; 
