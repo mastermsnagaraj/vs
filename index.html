@@ -43,6 +43,34 @@
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    
+    <script type="text/javascript" src="https://www.google.com/jsapi"></script>
+    <script type="text/javascript">
+        // Load the language API, specifically the transliteration package
+        google.load("language", "1");
+        
+        // Define the transliteration function using the Google API
+        function transliterateGoogle(sourceText) {
+            const targetField = document.getElementById('in-name-ta');
+            if (sourceText.length === 0) {
+                targetField.value = '';
+                return;
+            }
+
+            // Transliterate from English ('en') to Tamil ('ta')
+            google.language.transliterate(
+                [sourceText], 
+                "en", 
+                "ta", 
+                function(result) {
+                    if (!result.error && result.transliterations && result.transliterations.length > 0 && result.transliterations[0].transliteratedWords.length > 0) {
+                        // Use the first (best) transliterated word
+                        targetField.value = result.transliterations[0].transliteratedWords[0];
+                    }
+                }
+            );
+        }
+    </script>
 </head>
 <body class="min-h-screen flex flex-col text-gray-800">
 
@@ -106,7 +134,7 @@
     </div>
 
     <div id="payment-modal" class="fixed inset-0 bg-black bg-opacity-80 z-50 hidden items-center justify-center p-4" onclick="closeModal(event)">
-        <div class="bg-white rounded-xl shadow-2xl max-w-sm w-full p-6 transform transition-all" onclick="event.stopPropagation()">
+        <div class="bg-white rounded-xl shadow-2xl max-w-sm w-full p-6" onclick="event.stopPropagation()">
             <h3 class="text-xl font-bold mb-4">Complete Payment</h3>
             <div class="mb-4">
                 <label class="text-xs font-bold text-gray-500 uppercase">Payment Mode</label>
@@ -163,7 +191,9 @@
         
         function getDisplayName(item) {
             const lang = document.getElementById('lang-switch').value;
+            // 'Auto Lang' logic: check browser language
             const isTa = lang === 'ta' || (lang==='auto' && navigator.language.startsWith('ta'));
+            // Use Tamil name if available and preferred, otherwise use English
             return isTa ? (item.nameTa || item.nameEn) : item.nameEn;
         }
 
@@ -189,6 +219,7 @@
             }, 3500);
         }
 
+        // ================= QR CODE MANAGEMENT =================
         function openQrModal() {
             const modal = document.getElementById('generic-modal');
             const body = document.getElementById('modal-body');
@@ -328,8 +359,9 @@
                 <div class="bg-gray-100 p-4 rounded-xl mb-6 border border-gray-200">
                     <h4 class="font-bold text-gray-700 mb-3 text-sm uppercase tracking-wide" id="form-heading">Add New Item</h4>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <input id="in-name-en" type="text" placeholder="Name (English)" class="border p-2 rounded focus:ring-2 ring-green-500 outline-none">
-                        <input id="in-name-ta" type="text" placeholder="Name (Tamil)" class="border p-2 rounded focus:ring-2 ring-green-500 outline-none">
+                        <input id="in-name-en" type="text" placeholder="Name (English)" class="border p-2 rounded focus:ring-2 ring-green-500 outline-none" 
+                               oninput="transliterateGoogle(this.value)"> 
+                        <input id="in-name-ta" type="text" placeholder="Name (Tamil) - Auto Transliterated" class="border p-2 rounded focus:ring-2 ring-green-500 outline-none">
                         
                         <div class="flex gap-2">
                             <input id="in-price-kg" type="number" placeholder="₹ Price / Kg" class="border p-2 rounded w-full">
@@ -435,6 +467,7 @@
                     
                     if (!inventory[editingItemId]) inventory[editingItemId] = { kg: 0, unit: 0 };
                     
+                    // Only update stock if the field was touched in the edit form
                     if (document.getElementById('in-stock-kg').value !== "") inventory[editingItemId].kg = stockKg;
                     if (document.getElementById('in-stock-unit').value !== "") inventory[editingItemId].unit = stockUnit;
                     
@@ -478,6 +511,7 @@
             document.getElementById('in-price-kg').value = item.priceKg;
             document.getElementById('in-price-unit').value = item.priceUnit;
             
+            // Set stock values for reference/optional update
             document.getElementById('in-stock-kg').value = itemInv.kg;
             document.getElementById('in-stock-unit').value = itemInv.unit;
             
@@ -592,8 +626,7 @@
                 card.className = "bg-white rounded-xl shadow-sm hover:shadow-lg transition-all border border-gray-100 relative flex flex-col overflow-hidden group";
                 card.innerHTML = `
                     ${badge}
-                    <div class="h-32 w-full relative">
-                        ${imgContent}
+                    <div class="h-48 w-full relative"> ${imgContent}
                         <div class="absolute bottom-0 w-full bg-gradient-to-t from-black/60 to-transparent p-2">
                              <h3 class="font-bold text-white text-lg leading-none drop-shadow-md">${displayName}</h3>
                              <p class="text-xs text-gray-200 drop-shadow">${subName}</p>
@@ -689,26 +722,25 @@
                 const item = menuItems.find(i => i.id === cartItem.id);
                 if (!item) return;
 
-                const diffQty = newQty - cartItem.qty;
                 const inv = inventory[cartItem.id] || {kg: 0, unit: 0};
-                let currentReq = 0;
                 let pricePer = 0;
+                let newReqKgUnit = 0;
 
                 if (cartItem.unit === 'unit') {
-                    currentReq = newQty;
+                    newReqKgUnit = newQty;
                     pricePer = item.priceUnit;
-                    if (currentReq > inv.unit) { showToast(`Cannot add. Only ${inv.unit} units available.`, 'error'); return; }
+                    if (newReqKgUnit > inv.unit) { showToast(`Cannot add. Only ${inv.unit} units available.`, 'error'); return; }
                 } else { // kg or g
                     pricePer = item.priceKg;
-                    const newReqKg = (cartItem.unit === 'g' ? newQty / 1000 : newQty);
-                    if (newReqKg > inv.kg + (cartItem.unit === 'g' ? cartItem.qty/1000 : cartItem.qty)) { 
+                    newReqKgUnit = (cartItem.unit === 'g' ? newQty / 1000 : newQty);
+                    if (newReqKgUnit > inv.kg + cartItem.reqKgUnit) { 
                         showToast(`Cannot add. Only ${(inv.kg*1000).toFixed(0)} grams available.`, 'error'); 
                         return; 
                     }
-                    cartItem.reqKgUnit = newReqKg;
                 }
                 
                 cartItem.qty = newQty;
+                cartItem.reqKgUnit = newReqKgUnit;
                 cartItem.subtotal = pricePer * cartItem.reqKgUnit;
                 cartItem.label = cartItem.unit === 'unit' ? `${newQty} Pcs` : (cartItem.unit === 'kg' ? `${newQty} Kg` : `${newQty} g`);
 
@@ -729,11 +761,12 @@
 
             cart.forEach((item, index) => {
                 total += item.subtotal;
+                const product = menuItems.find(i => i.id === item.id);
                 const cartItemDiv = document.createElement('div');
                 cartItemDiv.className = "flex justify-between items-center bg-gray-50 p-3 rounded-lg border";
                 cartItemDiv.innerHTML = `
                     <div class="flex-1 min-w-0">
-                        <p class="font-bold text-gray-800 truncate">${getDisplayName(menuItems.find(i => i.id === item.id))}</p>
+                        <p class="font-bold text-gray-800 truncate">${getDisplayName(product)}</p>
                         <p class="text-xs text-gray-500">${item.label} @ ${formatCurrency(item.pricePer)}/${item.unit === 'unit' ? 'Pc' : 'Kg'}</p>
                     </div>
                     <div class="flex items-center space-x-2">
@@ -771,6 +804,7 @@
             
             document.getElementById('pay-amount').textContent = formatCurrency(total);
             document.getElementById('payment-modal').classList.remove('hidden');
+            document.getElementById('payment-modal').classList.add('flex'); // Ensure it shows up centered
             
             const payQrImg = document.getElementById('pay-qr-img');
             const payQrErr = document.getElementById('pay-qr-err');
@@ -848,6 +882,7 @@
 
             let itemsHtml = finalCart.map(item => {
                 const product = findItem(item.id);
+                // Use the names stored in the item object, falling back to English from cart for robustness
                 const nameEn = product?.nameEn || item.name;
                 const nameTa = product?.nameTa || nameEn;
                 
@@ -863,9 +898,9 @@
             printArea.innerHTML = `
                 <div class="text-center">
                     <h1 class="text-lg font-bold">V S TRADERS (வி எஸ் டிரேடர்ஸ்)</h1>
-                    <p class="text-[10px]">Your kangayam, Tiruppur, Tamil Nadu (உங்கள் முகவரி)</p>
-                    <p class="text-[10px]">GSTIN: VS TRADERS</p>
-                    <p class="text-[10px]">Ph: 9999999999 | ${new Date(timestamp).toLocaleDateString()} (${new Date(timestamp).toLocaleTimeString()})</p>
+                    <p class="text-[10px]">Your Address Line 1, Tiruppur, Tamil Nadu (உங்கள் முகவரி)</p>
+                    <p class="text-[10px]">GSTIN: 33AAAAA9999A1Z1</p>
+                    <p class="text-[10px]">Ph: 99999 99999 | ${new Date(timestamp).toLocaleDateString()} (${new Date(timestamp).toLocaleTimeString()})</p>
                     <p class="text-[10px] font-bold">Bill ID: ${saleId}</p>
                 </div>
                 <hr class="border-t border-dashed my-1">
@@ -973,7 +1008,11 @@
                 if (sale.mode === 'upi') totalUpi += sale.total;
                 
                 const time = new Date(sale.timestamp).toLocaleTimeString();
-                const itemsList = sale.items.map(i => `${i.name} (${i.label})`).join(', ');
+                const itemsList = sale.items.map(i => {
+                    const product = menuItems.find(p => p.id === i.id);
+                    const name = product ? getDisplayName(product) : i.name;
+                    return `${name} (${i.label})`;
+                }).join(', ');
 
                 return `
                     <tr class="hover:bg-gray-50">
@@ -1208,4 +1247,3 @@
     </script>
 </body>
 </html>
-
