@@ -6,10 +6,19 @@
     <title>V S TRADERS - POS with Images & Reports</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        /* Styles for printing the bill */
+        /* ==================== PRINT STYLES FIXES ==================== */
         @media print {
+            /* 1. Reset Visibility: Hide everything first */
             body * { visibility: hidden; }
-            .printable-bill-area, .printable-bill-area * { visibility: visible; }
+            
+            /* 2. Show Bill Area: Make the receipt content visible */
+            .printable-bill-area, .printable-bill-area * { 
+                visibility: visible; 
+                -webkit-print-color-adjust: exact !important; /* Force colors/backgrounds (e.g., green total) */
+                color-adjust: exact !important;
+            }
+            
+            /* 3. Position Bill Area: Ensure it starts at the top left */
             .printable-bill-area { 
                 position: absolute; 
                 left: 0; 
@@ -20,8 +29,11 @@
                 padding: 10px;
                 font-size: 11px;
             }
-            #app-container, .fixed { display: none !important; }
-            /* Specific print area styles for reports */
+            
+            /* 4. Hide Main App & Fixed Elements */
+            #app-container, header, .fixed { display: none !important; }
+            
+            /* 5. Reports Print Area */
             .printable-report-area { 
                 visibility: visible !important; 
                 position: static !important; 
@@ -33,14 +45,20 @@
             }
             .printable-report-area table { width: 100%; border-collapse: collapse; }
             .printable-report-area th, .printable-report-area td { border: 1px solid #ccc; padding: 4px; }
+            
+            /* 6. Fix for Mobile Print Margins */
+            @page {
+                margin: 0.5cm;
+            }
         }
+        
+        /* General Styles */
         body { font-family: "Inter", sans-serif; background-color: #f3f4f6; }
-        /* Custom Scrollbar */
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-thumb { background: #166534; border-radius: 3px; }
         ::-webkit-scrollbar-track { background: #dcfce7; }
-        
     </style>
+    
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     
@@ -158,10 +176,10 @@
     
     <div class="fixed top-0 left-0 w-full h-full p-8 bg-white text-black z-[100] hidden" id="report-print-container">
         <div id="report-print" class="printable-report-area mx-auto max-w-4xl"></div>
-        <div class="fixed top-4 right-4 z-[101] flex space-x-2">
-            <button onclick="window.print()" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow hover:bg-blue-700 print:hidden">Print Report</button>
-            <button onclick="generateReportPdf()" class="bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow hover:bg-red-700 print:hidden">PDF</button>
-            <button onclick="document.getElementById('report-print-container').classList.add('hidden')" class="bg-gray-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow hover:bg-gray-700 print:hidden">Close</button>
+        <div class="fixed top-4 right-4 z-[101] flex space-x-2 print:hidden">
+            <button onclick="window.print()" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow hover:bg-blue-700">Print Report</button>
+            <button onclick="generateReportPdf()" class="bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow hover:bg-red-700">PDF</button>
+            <button onclick="document.getElementById('report-print-container').classList.add('hidden')" class="bg-gray-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow hover:bg-gray-700">Close</button>
         </div>
     </div>
 
