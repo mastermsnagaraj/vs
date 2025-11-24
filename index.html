@@ -144,7 +144,7 @@
                     <!-- Dynamic content will be loaded here -->
                 </div>
                 <div class="mt-6 flex justify-end">
-                    <button onclick="document.getElementById('generic-modal').classList.add('hidden'); document.getElementById('generic-modal').classList.remove('flex');" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded-lg transition duration-200">
+                    <button onclick="document.getElementById('generic-modal').classList.add('hidden'); document.getElementById('generic-modal').classList.remove('flex'); renderMenu();" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded-lg transition duration-200">
                         Close
                     </button>
                 </div>
@@ -262,6 +262,19 @@
             try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (_) { return d; }
         }
         function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} }
+        function lsDel(k) { try { localStorage.removeItem(k); } catch (_) {} }
+        function sanitizeMenuItems() {
+            menuItems = (menuItems || []).map(m => ({
+                id: m.id,
+                nameEn: m.nameEn || '',
+                nameTa: m.nameTa || '',
+                priceKg: typeof m.priceKg === 'number' ? m.priceKg : parseFloat(m.priceKg) || 0,
+                priceGram: typeof m.priceGram === 'number' ? m.priceGram : parseFloat(m.priceGram) || 0,
+                priceUnit: typeof m.priceUnit === 'number' ? m.priceUnit : parseFloat(m.priceUnit) || 0,
+                imageUrl: m.imageUrl || null,
+                enabled: m.enabled !== false
+            }));
+        }
         function loadStateFromStorage() {
             const mi = lsGet(STORAGE_KEYS.menuItems, null);
             const inv = lsGet(STORAGE_KEYS.inventory, null);
@@ -271,12 +284,46 @@
             const nid = lsGet(STORAGE_KEYS.nextId, null);
             const iinv = lsGet(STORAGE_KEYS.initialInv, null);
             if (mi) menuItems = mi;
+            sanitizeMenuItems();
             if (inv) inventory = inv;
             if (ct) cart = ct;
             if (sh) salesHistory = sh;
             if (qr) qrCodeBase64 = qr;
             if (nid) nextItemId = nid;
             if (iinv) initialInventory = iinv;
+        }
+
+        function resetAppData() {
+            if (!confirm('Clear all saved data and reset?')) return;
+            lsDel(STORAGE_KEYS.menuItems);
+            lsDel(STORAGE_KEYS.inventory);
+            lsDel(STORAGE_KEYS.cart);
+            lsDel(STORAGE_KEYS.salesHistory);
+            lsDel(STORAGE_KEYS.qr);
+            lsDel(STORAGE_KEYS.nextId);
+            lsDel(STORAGE_KEYS.initialInv);
+            menuItems = [];
+            inventory = {};
+            cart = [];
+            salesHistory = [];
+            qrCodeBase64 = null;
+            nextItemId = 1;
+            initialInventory = [];
+            persistMenuItems();
+            persistInventory();
+            persistCart();
+            persistSalesHistory();
+            persistNextItemId();
+            renderMenuManager(document.getElementById('modal-body'));
+            renderMenu();
+            renderCart();
+            showToast('All saved data cleared and reset.', 'success');
+        }
+
+        function resetAppDataAndReload() {
+            if (!confirm('Clear all saved data and reload the app?')) return;
+            resetAppData();
+            setTimeout(() => window.location.reload(), 300);
         }
         function persistMenuItems() { lsSet(STORAGE_KEYS.menuItems, menuItems); }
         function persistInventory() { lsSet(STORAGE_KEYS.inventory, inventory); }
@@ -786,7 +833,7 @@
                 return;
             }
 
-            menuItems.filter(item => item.enabled !== false).forEach(item => {
+            menuItems.forEach(item => {
                 const stockKg = inventory[item.id]?.stockKg || 0;
                 const stockUnits = inventory[item.id]?.stockUnits || 0;
                 
@@ -860,15 +907,18 @@
         function renderMenuManager(body) {
             // 1. New Item Form
             body.innerHTML = `
+                <div class="flex justify-end mb-4">
+                    <button onclick="resetAppData()" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg mr-2">Reset App Data</button>
+                    <button onclick="resetAppDataAndReload()" class="bg-red-700 hover:bg-red-800 text-white font-bold py-2 px-4 rounded-lg">Reset & Reload</button>
+                </div>
                 <div class="p-4 border rounded-lg bg-indigo-50 mb-6">
                     <h4 class="font-bold text-lg mb-3">Add New Item</h4>
                     <form id="new-item-form" class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <input type="text" id="nameEn" placeholder="Name (English, e.g., Onion)" required class="p-2 border rounded-lg">
                         <input type="text" id="nameTa" placeholder="Name (Tamil, e.g., வெங்காயம்)" required class="p-2 border rounded-lg">
-                        <input type="number" id="priceKg" placeholder="Price per Kg (e.g., 50)" step="0.01" min="0" required class="p-2 border rounded-lg">
+                        <input type="number" id="priceKg" placeholder="Price per Kg (e.g., 50)" step="0.01" min="0" class="p-2 border rounded-lg">
                         <input type="number" id="priceGram" placeholder="Price per Gram (e.g., 0.05)" step="0.0001" min="0" class="p-2 border rounded-lg">
                         <input type="number" id="priceUnit" placeholder="Price per Unit (e.g., 5)" step="0.01" min="0" class="p-2 border rounded-lg">
-                        <label class="flex items-center space-x-2 md:col-span-2 text-sm text-gray-700"><input type="checkbox" id="enableListing" class="rounded" checked><span>Enable listing</span></label>
                         <div class="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
                             <input type="file" id="imageFile" accept="image/*" class="p-2 border rounded-lg" />
                             <div class="flex items-center space-x-3">
@@ -902,11 +952,19 @@
                 const baseData = {
                     nameEn: document.getElementById('nameEn').value,
                     nameTa: document.getElementById('nameTa').value,
-                    priceKg: parseFloat(document.getElementById('priceKg').value),
+                    priceKg: parseFloat(document.getElementById('priceKg').value) || 0,
                     priceGram: parseFloat(document.getElementById('priceGram').value) || 0,
                     priceUnit: parseFloat(document.getElementById('priceUnit').value) || 0,
-                    enabled: document.getElementById('enableListing').checked,
                 };
+                if (!baseData.nameEn || !baseData.nameTa) {
+                    showToast('Please enter item names in English and Tamil.', 'error');
+                    return;
+                }
+                const hasPrice = (baseData.priceKg && baseData.priceKg > 0) || (baseData.priceGram && baseData.priceGram > 0) || (baseData.priceUnit && baseData.priceUnit > 0);
+                if (!hasPrice) {
+                    showToast('Please provide at least one price (Kg/g/Unit).', 'error');
+                    return;
+                }
                 const file = imgInput.files[0];
                 if (file) {
                     const reader = new FileReader();
@@ -933,13 +991,11 @@
                                     <span class="inline-block bg-green-100 text-green-800 px-2 py-0.5 rounded mr-1">Kg: ₹${(item.priceKg||0).toFixed(2)}</span>
                                     <span class="inline-block bg-teal-100 text-teal-800 px-2 py-0.5 rounded mr-1">g: ₹${(item.priceGram||((item.priceKg||0)/1000)).toFixed(2)}</span>
                                     <span class="inline-block bg-blue-100 text-blue-800 px-2 py-0.5 rounded">Unit: ₹${(item.priceUnit||0).toFixed(2)}</span>
-                                    <span class="inline-block ${item.enabled!==false?'bg-emerald-100 text-emerald-800':'bg-gray-200 text-gray-700'} px-2 py-0.5 rounded ml-1">${item.enabled!==false?'Enabled':'Disabled'}</span>
                                 </div>
                             </div>
                             <div class="mt-2 flex space-x-2">
                                 <button onclick="editMenuItem('${item.id}')" class="px-3 py-1 text-sm bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow">Edit</button>
                                 <button onclick="deleteMenuItem('${item.id}')" class="px-3 py-1 text-sm bg-red-600 hover:bg-red-700 text-white rounded-lg shadow">Delete</button>
-                                <button onclick="toggleItemEnabled('${item.id}')" class="px-3 py-1 text-sm ${item.enabled!==false?'bg-gray-600 hover:bg-gray-700':'bg-emerald-600 hover:bg-emerald-700'} text-white rounded-lg shadow">${item.enabled!==false?'Disable':'Enable'}</button>
                             </div>
                         </div>
                     </div>
@@ -947,18 +1003,7 @@
             });
             body.innerHTML += `<div class="mt-6">${listHtml}</div>`;
 
-            window.toggleItemEnabled = (itemId) => {
-                const it = menuItems.find(i => i.id === itemId);
-                if (!it) return;
-                const willDisable = it.enabled !== false;
-                it.enabled = willDisable ? false : true;
-                cart = cart.filter(ci => ci.itemId !== itemId);
-                persistMenuItems();
-                persistCart();
-                renderMenuManager(document.getElementById('modal-body'));
-                renderMenu();
-                showToast(willDisable ? 'Item disabled for listing.' : 'Item enabled for listing.', willDisable ? 'error' : 'success');
-            };
+            
         }
         
         /**
@@ -978,6 +1023,8 @@
             persistMenuItems();
             persistInventory();
             persistNextItemId();
+            const modal = document.getElementById('generic-modal');
+            if (modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); }
         }
 
         /**
@@ -1030,7 +1077,7 @@
                         </div>
                         <div>
                             <label class="block text-xs text-gray-600 mb-1">Price per Unit</label>
-                            <input type="number" id="edit-priceUnit" value="${item.priceUnit}" step="0.01" min="0" required class="p-2 border rounded-lg w-full">
+                            <input type="number" id="edit-priceUnit" value="${item.priceUnit}" step="0.01" min="0" class="p-2 border rounded-lg w-full">
                         </div>
                         <div class="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
                             <div>
@@ -1042,7 +1089,6 @@
                                 <span class="text-xs text-gray-500">Current/Selected image</span>
                             </div>
                         </div>
-                        <label class="flex items-center space-x-2 md:col-span-2 text-sm text-gray-700"><input type="checkbox" id="edit-enabled" class="rounded" ${item.enabled!==false?'checked':''}><span>Enable listing</span></label>
                         <div class="md:col-span-2 flex justify-end space-x-3 mt-2">
                             <button type="button" id="edit-cancel" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded-lg">Cancel</button>
                             <button type="submit" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg">Save Changes</button>
@@ -1073,7 +1119,6 @@
                 item.priceKg = parseFloat(document.getElementById('edit-priceKg').value) || 0;
                 item.priceGram = parseFloat(document.getElementById('edit-priceGram').value) || 0;
                 item.priceUnit = parseFloat(document.getElementById('edit-priceUnit').value) || 0;
-                item.enabled = document.getElementById('edit-enabled').checked;
                 if (newImageDataUrl) item.imageUrl = newImageDataUrl;
 
                 showToast('Item updated successfully!', 'success');
