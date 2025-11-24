@@ -3,1497 +3,1208 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>V S TRADERS - Vegetable Store POS</title>
-    <!-- Load Tailwind CSS -->
+    <title>V S TRADERS - POS with Images & Reports</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        /* Custom styles for print output */
+        /* Styles for printing the bill */
         @media print {
-            body * {
-                visibility: hidden;
-            }
-            .printable-area, .printable-area * {
-                visibility: visible;
-            }
-            .printable-area {
-                position: absolute;
-                left: 0;
-                top: 0;
+            body * { visibility: hidden; }
+            .printable-bill-area, .printable-bill-area * { visibility: visible; }
+            .printable-bill-area { 
+                position: absolute; 
+                left: 0; 
+                top: 0; 
                 width: 100%;
-                font-family: monospace;
+                max-width: 300px; /* Standard receipt width */
+                margin: 0 auto;
+                padding: 10px;
+                font-size: 11px;
             }
-            /* Hide the print preview for the actual app UI */
-            #app-container { display: none !important; }
-            #report-container { display: block !important; }
+            #app-container, .fixed { display: none !important; }
+            /* Specific print area styles for reports */
+            .printable-report-area { 
+                visibility: visible !important; 
+                position: static !important; 
+                margin: 0;
+                padding: 0;
+                width: 100%;
+                max-width: 100%;
+                font-size: 12px;
+            }
+            .printable-report-area table { width: 100%; border-collapse: collapse; }
+            .printable-report-area th, .printable-report-area td { border: 1px solid #ccc; padding: 4px; }
         }
-        /* Inter font for better readability */
-        body {
-            font-family: "Inter", sans-serif;
-            background-color: #f7f9fc;
-        }
-        /* Custom scrollbar for better aesthetics */
-        .custom-scrollbar::-webkit-scrollbar {
-            width: 8px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-            background-color: #4CAF50;
-            border-radius: 4px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-track {
-            background: #e0f2f1;
-        }
-    </style>
-</head>
-<body class="min-h-screen flex flex-col">
-
-    <!-- Main Application Container -->
-    <div id="app-container" class="flex flex-1 flex-col lg:flex-row">
+        body { font-family: "Inter", sans-serif; background-color: #f3f4f6; }
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-thumb { background: #166534; border-radius: 3px; }
+        ::-webkit-scrollbar-track { background: #dcfce7; }
         
-        <!-- Header for Mobile/Tablet -->
-        <header class="lg:hidden bg-green-700 text-white p-4 shadow-lg sticky top-0 z-10">
-            <h1 class="text-xl font-bold">V S TRADERS</h1>
-            <p id="user-id-display-mobile" class="text-xs mt-1 opacity-75">Session ID</p>
-        </header>
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+</head>
+<body class="min-h-screen flex flex-col text-gray-800">
 
-        <!-- Product Menu (Left/Top) -->
-        <main class="lg:w-3/5 xl:w-2/3 p-4 custom-scrollbar overflow-y-auto">
-            <h2 class="text-2xl font-extrabold mb-2 text-gray-800 hidden lg:block">Available Vegetables</h2>
-            <div class="flex items-center justify-end mb-4">
-                <label for="lang-switch" class="text-sm text-gray-700 mr-2">Language</label>
-                <select id="lang-switch" class="border border-gray-300 rounded-lg p-1 text-sm">
-                    <option value="auto">Auto</option>
-                    <option value="en">English</option>
-                    <option value="ta">தமிழ்</option>
-                </select>
-            </div>
-            <div id="product-menu" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                <!-- Product cards will be rendered here -->
-            </div>
+    <header class="fixed top-0 left-0 right-0 bg-white border-b shadow-md p-3 z-30 flex justify-between items-center flex-wrap">
+        <div class="flex items-center space-x-4 mb-2 md:mb-0">
+            <h1 class="text-xl font-bold text-green-800">V S TRADERS</h1>
+            <p class="text-xs text-gray-500 hidden sm:block">Inventory & POS System</p>
+        </div>
+        
+        <div class="flex items-center space-x-2 flex-wrap">
+            <select id="lang-switch" class="border border-green-300 rounded-lg p-1 text-sm bg-white text-green-800 focus:outline-none">
+                <option value="auto">Auto Lang</option>
+                <option value="en">English</option>
+                <option value="ta">தமிழ்</option>
+            </select>
+            <button onclick="openManagerModal('menu')" class="bg-indigo-600 text-white px-3 py-1 rounded-lg text-sm font-bold shadow hover:bg-indigo-700 transition">Menu</button>
+            <button onclick="openManagerModal('inventory')" class="bg-yellow-600 text-white px-3 py-1 rounded-lg text-sm font-bold shadow hover:bg-yellow-700 transition">Stock</button>
+            <button onclick="openReportsModal()" class="bg-purple-600 text-white px-3 py-1 rounded-lg text-sm font-bold shadow hover:bg-purple-700 transition">Reports</button>
+            <button onclick="openQrModal()" class="bg-gray-700 text-white px-3 py-1 rounded-lg text-sm font-bold shadow hover:bg-gray-800 transition">QR</button>
+        </div>
+    </header>
+
+    <div id="app-container" class="flex flex-1 flex-col lg:flex-row h-screen overflow-hidden mt-14">
+        
+        <main class="lg:w-2/3 p-4 overflow-y-auto flex flex-col pt-2">
+            <div id="product-menu" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 gap-4 pb-4">
+                </div>
         </main>
 
-        <!-- Cart and Billing (Right/Bottom) -->
-        <aside class="lg:w-2/5 xl:w-1/3 bg-white border-l border-gray-200 shadow-xl flex flex-col">
-            <!-- Header for Desktop -->
-            <header class="p-4 bg-green-800 text-white hidden lg:block">
-                <h1 class="text-2xl font-extrabold">V S TRADERS</h1>
-                <p id="user-id-display-desktop" class="text-sm mt-1 opacity-75">Session ID</p>
-            </header>
-
-            <!-- Cart Items -->
-            <div id="cart-items-container" class="flex-1 overflow-y-auto p-4 custom-scrollbar border-b border-gray-200">
-                <h3 class="text-xl font-semibold mb-3 text-gray-700">Billing Cart (பில் பட்டியல்)</h3>
-                <div id="cart-list" class="space-y-3">
-                    <p class="text-gray-500 text-sm">Add items from the menu to start billing.</p>
-                </div>
+        <aside class="lg:w-1/3 bg-white border-l shadow-2xl flex flex-col z-20">
+            <div class="p-4 bg-green-800 text-white shadow-md">
+                <h2 class="text-lg font-bold">Billing Cart</h2>
             </div>
 
-            <!-- Totals and Actions -->
-            <div class="p-4 bg-gray-50 shadow-inner">
-                <div class="flex justify-between items-center mb-3 font-bold text-lg text-gray-800">
-                    <span>Total (மொத்தம்):</span>
-                    <span id="cart-total" class="text-2xl text-green-600">₹0.00</span>
-                </div>
+            <div id="cart-items-container" class="flex-1 overflow-y-auto p-4 space-y-2">
+                <div id="cart-list" class="text-center text-gray-400 text-sm mt-10">Cart is empty</div>
+            </div>
 
-                <div class="space-y-3">
-                    <button onclick="openPaymentModal()" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg transition duration-200 shadow-md">
-                        Pay Now (பணம் செலுத்து)
-                    </button>
-                    <div class="flex space-x-3">
-                        <button onclick="printBill()" class="flex-1 bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-lg transition duration-200">
-                            Print Bill (பில் அச்சிடு)
-                        </button>
-                        <button onclick="shareBill()" class="flex-1 bg-teal-500 hover:bg-teal-600 text-white font-bold py-3 px-4 rounded-lg transition duration-200">
-                            Share (பகிர்)
-                        </button>
-                    </div>
-                    <button onclick="clearCart()" class="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg transition duration-200 text-sm">
-                        Clear Cart (பட்டியலை அழி)
-                    </button>
+            <div class="p-4 bg-gray-50 border-t">
+                <div class="flex justify-between text-xl font-bold text-gray-800 mb-4">
+                    <span>Total:</span>
+                    <span id="cart-total" class="text-green-700">₹0.00</span>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <button onclick="openPaymentModal()" class="col-span-2 bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-lg shadow transition">PAY NOW</button>
+                    <button onclick="printBill()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded-lg text-sm">Print</button>
+                    <button onclick="clearCart()" class="bg-red-100 hover:bg-red-200 text-red-600 font-bold py-2 rounded-lg text-sm">Clear</button>
                 </div>
             </div>
         </aside>
     </div>
 
-    <!-- Management/Report Buttons (Fixed Bottom on Mobile, Top Right on Desktop) -->
-    <div class="fixed bottom-0 left-0 right-0 lg:static lg:p-4 lg:flex lg:justify-end bg-white lg:bg-transparent p-3 border-t lg:border-t-0 shadow-2xl lg:shadow-none z-20">
-        <div class="flex justify-around lg:space-x-4 space-x-2">
-            <button onclick="openManagerModal('menu')" class="flex-1 lg:flex-none text-sm bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-3 rounded-lg transition duration-200 shadow-md">
-                Manage Menu (மெனுவை நிர்வகி)
-            </button>
-            <button onclick="openManagerModal('inventory')" class="flex-1 lg:flex-none text-sm bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-2 px-3 rounded-lg transition duration-200 shadow-md">
-                Manage Stock (பங்கு நிர்வகி)
-            </button>
-            <button onclick="openReportsModal()" class="flex-1 lg:flex-none text-sm bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-3 rounded-lg transition duration-200 shadow-md">
-                Reports (அறிக்கைகள்)
-            </button>
-            <button onclick="openQrUploadModal()" class="flex-1 lg:flex-none text-sm bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 px-3 rounded-lg transition duration-200 shadow-md">
-                QR Code (QR குறியீடு)
-            </button>
-        </div>
-    </div>
-
-
-    <!-- ==================================== MODALS ==================================== -->
-
-    <!-- Generic Modal Structure -->
-    <div id="generic-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 z-50 hidden items-center justify-center p-4" onclick="closeModal(event)">
-        <div id="modal-content-area" class="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto transform transition-all duration-300 scale-95" onclick="event.stopPropagation()">
-            <div class="p-6">
-                <h3 id="modal-title" class="text-2xl font-bold mb-4 border-b pb-2 text-gray-800">Modal Title</h3>
-                <div id="modal-body">
-                    <!-- Dynamic content will be loaded here -->
-                </div>
-                <div class="mt-6 flex justify-end">
-                    <button onclick="document.getElementById('generic-modal').classList.add('hidden'); document.getElementById('generic-modal').classList.remove('flex'); renderMenu();" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded-lg transition duration-200">
-                        Close
-                    </button>
-                </div>
+    <div id="generic-modal" class="fixed inset-0 bg-black bg-opacity-70 z-50 hidden items-center justify-center p-4 backdrop-blur-sm" onclick="closeModal(event)">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden" onclick="event.stopPropagation()">
+            <div class="p-4 border-b flex justify-between items-center bg-gray-50">
+                <h3 id="modal-title" class="text-xl font-bold text-gray-800">Title</h3>
+                <button onclick="closeGenericModal()" class="text-gray-500 hover:text-red-500 text-2xl">&times;</button>
             </div>
+            <div id="modal-body" class="p-6 overflow-y-auto custom-scrollbar"></div>
         </div>
     </div>
 
-    <!-- QR Code Upload Modal -->
-    <div id="qr-upload-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 z-50 hidden items-center justify-center p-4" onclick="closeModal(event)">
-        <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full p-6" onclick="event.stopPropagation()">
-            <h3 class="text-2xl font-bold mb-4 border-b pb-2 text-gray-800">QR Code Upload (QR குறியீடு பதிவேற்று)</h3>
-            <p class="text-sm text-gray-600 mb-4">Upload a payment QR code image. This will be shown on the 'Pay Now' screen.</p>
+    <div id="payment-modal" class="fixed inset-0 bg-black bg-opacity-80 z-50 hidden items-center justify-center p-4" onclick="closeModal(event)">
+        <div class="bg-white rounded-xl shadow-2xl max-w-sm w-full p-6 transform transition-all" onclick="event.stopPropagation()">
+            <h3 class="text-xl font-bold mb-4">Complete Payment</h3>
             <div class="mb-4">
-                <input type="file" id="qr-file-input" accept="image/*" class="w-full text-gray-700 border border-gray-300 rounded-lg p-2 focus:ring-green-500 focus:border-green-500">
-            </div>
-            <div id="qr-preview-container" class="mb-4 flex justify-center border-dashed border-2 border-gray-300 rounded-lg p-4">
-                <img id="qr-image-preview" src="" alt="QR Code Preview" class="max-w-full max-h-48 object-contain" style="display:none;">
-                <p id="qr-placeholder" class="text-gray-500">No QR Code uploaded yet.</p>
-            </div>
-            <div class="mt-6 flex justify-end space-x-3">
-                <button onclick="saveQrCode()" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg transition duration-200">
-                    Save QR Code
-                </button>
-                <button onclick="document.getElementById('qr-upload-modal').classList.add('hidden'); document.getElementById('qr-upload-modal').classList.remove('flex');" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded-lg transition duration-200">
-                    Close
-                </button>
-            </div>
-            <p id="qr-upload-message" class="mt-4 text-center text-sm text-red-500"></p>
-        </div>
-    </div>
-
-    <!-- Payment Modal (Hidden) -->
-    <div id="payment-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 z-50 hidden items-center justify-center p-4" onclick="closeModal(event)">
-        <div class="bg-white rounded-xl shadow-2xl max-w-md w-full p-6" onclick="event.stopPropagation()">
-            <h3 class="text-2xl font-bold mb-4 border-b pb-2 text-gray-800">Payment (பணம் செலுத்துதல்)</h3>
-            <div class="mb-4">
-                <label for="payment-mode" class="block text-sm font-medium text-gray-700 mb-2">Payment Mode (பணம் செலுத்தும் முறை)</label>
-                <select id="payment-mode" class="w-full border border-gray-300 rounded-lg p-2 focus:ring-green-500 focus:border-green-500">
-                    <option value="cash">Cash (பணம்)</option>
-                    <option value="upi">UPI/QR</option>
-                    <option value="card">Card (அட்டை)</option>
+                <label class="text-xs font-bold text-gray-500 uppercase">Payment Mode</label>
+                <select id="payment-mode" class="w-full border p-2 rounded mt-1 bg-gray-50">
+                    <option value="cash">💵 Cash</option>
+                    <option value="upi">📱 UPI / QR</option>
+                    <option value="card">💳 Card</option>
                 </select>
             </div>
-            <div id="qr-display-area" class="text-center p-4 border border-gray-300 rounded-lg bg-gray-50 mb-4 hidden">
-                <p class="text-lg font-semibold mb-2">Scan to Pay (ஸ்கேன் செய்து பணம் செலுத்துங்கள்)</p>
-                <img id="payment-qr-image" src="" alt="Payment QR Code" class="w-48 h-48 mx-auto object-contain mb-3 border rounded-lg">
-                <p id="qr-error-message" class="text-red-500 text-sm hidden">QR Code not uploaded. Please upload it in the 'QR Code' manager.</p>
+            <div id="qr-area" class="hidden mb-4 text-center p-2 bg-gray-50 rounded border">
+                <img id="pay-qr-img" class="w-40 h-40 mx-auto object-contain bg-white">
+                <p id="pay-qr-err" class="text-xs text-red-500 mt-2 hidden">QR Code not uploaded yet.</p>
             </div>
-            <div class="text-2xl font-extrabold text-center py-4 bg-green-100 rounded-lg">
-                Amount Due: <span id="payment-due-amount" class="text-green-600">₹0.00</span>
+            <div class="text-center bg-green-50 p-4 rounded-lg border border-green-100 mb-4">
+                <span class="block text-xs text-green-600 uppercase font-bold">Amount Due</span>
+                <span id="pay-amount" class="text-3xl font-extrabold text-green-700">₹0.00</span>
             </div>
-            <div class="mt-6 flex justify-end space-x-3">
-                <button onclick="completeTransaction()" class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg transition duration-200">
-                    Complete Sale
-                </button>
-                <button onclick="document.getElementById('payment-modal').classList.add('hidden'); document.getElementById('payment-modal').classList.remove('flex');" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded-lg transition duration-200">
-                    Cancel
-                </button>
-            </div>
+            <button onclick="finishSale()" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-lg shadow-lg">CONFIRM SALE</button>
+        </div>
+    </div>
+    
+    <div class="fixed top-0 left-0 w-full h-full p-8 bg-white text-black z-[100] hidden" id="report-print-container">
+        <div id="report-print" class="printable-report-area mx-auto max-w-4xl"></div>
+        <div class="fixed top-4 right-4 z-[101] flex space-x-2">
+            <button onclick="window.print()" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow hover:bg-blue-700 print:hidden">Print Report</button>
+            <button onclick="generateReportPdf()" class="bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow hover:bg-red-700 print:hidden">PDF</button>
+            <button onclick="document.getElementById('report-print-container').classList.add('hidden')" class="bg-gray-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow hover:bg-gray-700 print:hidden">Close</button>
         </div>
     </div>
 
-
-    <!-- Report Print Area (Hidden, visible only for printing) -->
-    <div id="report-container" class="printable-area hidden p-4">
-        <div id="report-content"></div>
-    </div>
-
-    <!-- Toast Notification Area -->
-    <div id="toast-container" class="fixed bottom-4 right-4 space-y-2 z-50">
-        <!-- Toasts will be appended here -->
-    </div>
-
+    <div id="toast-box" class="fixed top-4 right-4 z-50 flex flex-col gap-2"></div>
 
     <script>
-        // ==================================== GLOBAL STATE & CONFIG (IN-MEMORY) ====================================
-        
-        // Mock data structures, all data is temporary!
-        let menuItems = [
-            { id: 'item1', nameEn: 'Onion', nameTa: 'வெங்காயம்', priceKg: 50.00, priceUnit: 5.00 },
-            { id: 'item2', nameEn: 'Tomato', nameTa: 'தக்காளி', priceKg: 40.00, priceUnit: 4.00 },
-            { id: 'item3', nameEn: 'Potato', nameTa: 'உருளைக்கிழங்கு', priceKg: 35.00, priceUnit: 6.00 },
-            { id: 'item4', nameEn: 'Carrot', nameTa: 'கேரட்', priceKg: 70.00, priceUnit: 8.00 },
-            { id: 'item5', nameEn: 'Cabbage', nameTa: 'முட்டைக்கோஸ்', priceKg: 30.00, priceUnit: 10.00 },
-            { id: 'item6', nameEn: 'Beans', nameTa: 'பீன்ஸ்', priceKg: 80.00, priceUnit: 0.00 },
-        ];
-        
-        // Stock: {itemId: {stockKg: number, stockUnits: number}}
-        let inventory = {
-            'item1': { stockKg: 10.5, stockUnits: 50 },
-            'item2': { stockKg: 15.0, stockUnits: 75 },
-            'item3': { stockKg: 20.0, stockUnits: 60 },
-            'item4': { stockKg: 8.2, stockUnits: 40 },
-            'item5': { stockKg: 12.0, stockUnits: 15 },
-            'item6': { stockKg: 7.5, stockUnits: 0 },
-        }; 
-
+        // ================= STATE MANAGEMENT =================
+        let menuItems = [];
+        let inventory = {};
         let cart = [];
         let salesHistory = [];
+        let qrCode = null;
+        let nextId = 1;
+        let isSaving = false;
 
-        let qrCodeBase64 = null;
-        let nextItemId = 7;
-        let initialInventory = {};
-
-        const STORAGE_KEYS = {
-            menuItems: 'vs_menuItems',
-            inventory: 'vs_inventory',
-            cart: 'vs_cart',
-            salesHistory: 'vs_salesHistory',
-            qr: 'vs_qrCodeBase64',
-            nextId: 'vs_nextItemId',
-            initialInv: 'vs_initialInventory'
-        };
-        function lsGet(k, d) {
-            try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (_) { return d; }
+        // Helper functions
+        function closeModal(event) {
+            if (event.target === document.getElementById('generic-modal')) closeGenericModal();
+            if (event.target === document.getElementById('payment-modal')) closePaymentModal();
         }
-        function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} }
-        function lsDel(k) { try { localStorage.removeItem(k); } catch (_) {} }
-        function sanitizeMenuItems() {
-            menuItems = (menuItems || []).map(m => ({
-                id: m.id,
-                nameEn: m.nameEn || '',
-                nameTa: m.nameTa || '',
-                priceKg: typeof m.priceKg === 'number' ? m.priceKg : parseFloat(m.priceKg) || 0,
-                priceGram: typeof m.priceGram === 'number' ? m.priceGram : parseFloat(m.priceGram) || 0,
-                priceUnit: typeof m.priceUnit === 'number' ? m.priceUnit : parseFloat(m.priceUnit) || 0,
-                imageUrl: m.imageUrl || null,
-                enabled: m.enabled !== false
-            }));
+        function closeGenericModal() { document.getElementById('generic-modal').classList.add('hidden'); }
+        function closePaymentModal() { document.getElementById('payment-modal').classList.add('hidden'); }
+        
+        function formatCurrency(amount) {
+            return `₹${(amount || 0).toFixed(2)}`;
         }
-        function loadStateFromStorage() {
-            const mi = lsGet(STORAGE_KEYS.menuItems, null);
-            const inv = lsGet(STORAGE_KEYS.inventory, null);
-            const ct = lsGet(STORAGE_KEYS.cart, null);
-            const sh = lsGet(STORAGE_KEYS.salesHistory, null);
-            const qr = localStorage.getItem(STORAGE_KEYS.qr);
-            const nid = lsGet(STORAGE_KEYS.nextId, null);
-            const iinv = lsGet(STORAGE_KEYS.initialInv, null);
-            if (mi) menuItems = mi;
-            sanitizeMenuItems();
-            if (inv) inventory = inv;
-            if (ct) cart = ct;
-            if (sh) salesHistory = sh;
-            if (qr) qrCodeBase64 = qr;
-            if (nid) nextItemId = nid;
-            if (iinv) initialInventory = iinv;
+        
+        function getDisplayName(item) {
+            const lang = document.getElementById('lang-switch').value;
+            const isTa = lang === 'ta' || (lang==='auto' && navigator.language.startsWith('ta'));
+            return isTa ? (item.nameTa || item.nameEn) : item.nameEn;
         }
 
-        function resetAppData() {
-            if (!confirm('Clear all saved data and reset?')) return;
-            lsDel(STORAGE_KEYS.menuItems);
-            lsDel(STORAGE_KEYS.inventory);
-            lsDel(STORAGE_KEYS.cart);
-            lsDel(STORAGE_KEYS.salesHistory);
-            lsDel(STORAGE_KEYS.qr);
-            lsDel(STORAGE_KEYS.nextId);
-            lsDel(STORAGE_KEYS.initialInv);
-            menuItems = [];
-            inventory = {};
-            cart = [];
-            salesHistory = [];
-            qrCodeBase64 = null;
-            nextItemId = 1;
-            initialInventory = [];
-            persistMenuItems();
-            persistInventory();
-            persistCart();
-            persistSalesHistory();
-            persistNextItemId();
-            renderMenuManager(document.getElementById('modal-body'));
-            renderMenu();
-            renderCart();
-            showToast('All saved data cleared and reset.', 'success');
-        }
-
-        function resetAppDataAndReload() {
-            if (!confirm('Clear all saved data and reload the app?')) return;
-            resetAppData();
-            setTimeout(() => window.location.reload(), 300);
-        }
-        function persistMenuItems() { lsSet(STORAGE_KEYS.menuItems, menuItems); }
-        function persistInventory() { lsSet(STORAGE_KEYS.inventory, inventory); }
-        function persistCart() { lsSet(STORAGE_KEYS.cart, cart); }
-        function persistSalesHistory() { lsSet(STORAGE_KEYS.salesHistory, salesHistory); }
-        function persistNextItemId() { lsSet(STORAGE_KEYS.nextId, nextItemId); }
-        function persistQr() { try { localStorage.setItem(STORAGE_KEYS.qr, qrCodeBase64 || ''); } catch (_) {} }
-        function persistInitialInventory() { lsSet(STORAGE_KEYS.initialInv, initialInventory); }
-
-        // ==================================== UTILITIES ====================================
-
-        /**
-         * Shows a toast notification.
-         */
         function showToast(message, type = 'success') {
-            const container = document.getElementById('toast-container');
-            const color = type === 'success' ? 'bg-green-500' : 'bg-red-500';
+            const box = document.getElementById('toast-box');
+            const color = type === 'error' ? 'bg-red-500' : (type === 'warning' ? 'bg-yellow-500' : 'bg-green-600');
             const toast = document.createElement('div');
-            toast.className = `p-3 rounded-lg text-white font-semibold shadow-lg ${color} transition transform ease-out duration-300 translate-x-full opacity-0 max-w-xs`;
+            toast.className = `${color} text-white px-4 py-2 rounded-lg shadow-xl text-sm font-bold transition-all transform translate-x-full opacity-0`;
             toast.textContent = message;
+            box.appendChild(toast);
 
-            container.appendChild(toast);
-
-            // Animate in
             setTimeout(() => {
                 toast.classList.remove('translate-x-full', 'opacity-0');
                 toast.classList.add('translate-x-0', 'opacity-100');
             }, 10);
 
-            // Animate out and remove
             setTimeout(() => {
                 toast.classList.remove('translate-x-0', 'opacity-100');
                 toast.classList.add('translate-x-full', 'opacity-0');
-                setTimeout(() => toast.remove(), 300);
-            }, 5000);
+            }, 3000);
+            setTimeout(() => {
+                toast.remove();
+            }, 3500);
         }
 
-        /**
-         * Closes the generic modal if the click is outside the content area.
-         */
-        function closeModal(event) {
-            if (event.target.id === 'generic-modal' || event.target.id === 'qr-upload-modal' || event.target.id === 'payment-modal') {
-                event.target.classList.add('hidden');
-                event.target.classList.remove('flex');
+        function openQrModal() {
+            const modal = document.getElementById('generic-modal');
+            const body = document.getElementById('modal-body');
+            const title = document.getElementById('modal-title');
+
+            modal.classList.remove('hidden'); modal.classList.add('flex');
+            title.textContent = "Upload UPI QR Code (Max 150px)";
+            
+            body.innerHTML = `
+                <div class="flex flex-col items-center p-4">
+                    <img id="current-qr" src="${qrCode || ''}" class="w-48 h-48 object-contain mb-4 border p-2 bg-gray-50 ${qrCode ? '' : 'hidden'}">
+                    <p id="qr-status" class="text-sm text-gray-500 mb-4">${qrCode ? 'Current QR Code loaded.' : 'No QR Code uploaded yet.'}</p>
+                    <input id="qr-file-input" type="file" accept="image/*" class="mb-4 border p-2 rounded w-full">
+                    <button onclick="uploadQrCode()" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-lg shadow">Upload & Save QR</button>
+                    <button onclick="deleteQrCode()" class="mt-2 text-sm text-red-500 hover:text-red-700">Delete QR Code</button>
+                </div>
+            `;
+        }
+        async function uploadQrCode() {
+            const fileInput = document.getElementById('qr-file-input');
+            if (fileInput.files.length === 0) { showToast("Please select a file.", 'error'); return; }
+
+            try {
+                const imgData = await resizeImage(fileInput.files[0], 150, 0.7);
+                qrCode = imgData;
+                localStorage.setItem('vs_qr', qrCode);
+                showToast("QR Code Saved!");
+                openQrModal();
+            } catch(e) {
+                showToast("Image Upload Error. Try a smaller file.", 'error');
+            }
+        }
+        function deleteQrCode() {
+            if (confirm("Permanently delete the stored QR code?")) {
+                qrCode = null;
+                localStorage.removeItem('vs_qr');
+                showToast("QR Code Deleted!");
+                openQrModal();
             }
         }
 
-        /**
-         * Converts a File object to a Base64 string.
-         */
-        function fileToBase64(file) {
+        // Load Data on Start
+        function init() {
+            try {
+                const ls = localStorage;
+                if(ls.getItem('vs_menu')) menuItems = JSON.parse(ls.getItem('vs_menu'));
+                else {
+                    // Default Demo Data
+                    menuItems = [
+                        { id: '1', nameEn: 'Onion', nameTa: 'வெங்காயம்', priceKg: 50, priceUnit: 0, img: null },
+                        { id: '2', nameEn: 'Tomato', nameTa: 'தக்காளி', priceKg: 40, priceUnit: 0, img: null },
+                        { id: '3', nameEn: 'Coconut', nameTa: 'தேங்காய்', priceKg: 0, priceUnit: 25, img: null },
+                    ];
+                    nextId = 4;
+                }
+                
+                if(ls.getItem('vs_inv')) inventory = JSON.parse(ls.getItem('vs_inv'));
+                else {
+                    inventory = { '1': {kg: 10, unit: 0}, '2': {kg: 15, unit: 0}, '3': {kg: 0, unit: 50} };
+                }
+
+                if(ls.getItem('vs_hist')) salesHistory = JSON.parse(ls.getItem('vs_hist'));
+                if(ls.getItem('vs_qr')) qrCode = ls.getItem('vs_qr');
+                if(ls.getItem('vs_nid')) nextId = parseInt(ls.getItem('vs_nid'));
+
+            } catch(e) { console.error(e); localStorage.clear(); }
+
+            renderMenu();
+            renderCart();
+        }
+
+        function save() {
+            if (isSaving) return;
+            isSaving = true;
+            try {
+                localStorage.setItem('vs_menu', JSON.stringify(menuItems));
+                localStorage.setItem('vs_inv', JSON.stringify(inventory));
+                localStorage.setItem('vs_hist', JSON.stringify(salesHistory));
+                localStorage.setItem('vs_nid', nextId);
+                if(qrCode) localStorage.setItem('vs_qr', qrCode);
+            } catch(e) {
+                console.error("Failed to save data to Local Storage:", e);
+                showToast("Warning: Failed to save data. Local Storage might be full.", 'error');
+            } finally {
+                isSaving = false;
+            }
+        }
+
+        // ================= IMAGE COMPRESSION LOGIC =================
+        function resizeImage(file, maxWidth, quality) {
             return new Promise((resolve, reject) => {
                 const reader = new FileReader();
                 reader.readAsDataURL(file);
-                reader.onload = () => resolve(reader.result.split(',')[1]); // Only data part
-                reader.onerror = error => reject(error);
+                reader.onload = (event) => {
+                    const img = new Image();
+                    img.src = event.target.result;
+                    img.onload = () => {
+                        const elem = document.createElement('canvas');
+                        const scaleFactor = maxWidth / img.width;
+                        elem.width = maxWidth;
+                        elem.height = img.height * scaleFactor;
+                        if (elem.height > 150) { // Limit height as well for reasonable square-ish images
+                            elem.height = 150;
+                            elem.width = img.width * (150 / img.height);
+                        }
+                        const ctx = elem.getContext('2d');
+                        ctx.drawImage(img, 0, 0, elem.width, elem.height);
+                        resolve(elem.toDataURL('image/jpeg', quality));
+                    };
+                    img.onerror = error => reject(error);
+                };
             });
         }
 
-        /**
-         * Formats a number to currency string.
-         */
-        function formatCurrency(amount) {
-            // Guard against undefined or null before calling toFixed
-            const numericAmount = amount === undefined || amount === null ? 0 : amount;
-            return `₹${numericAmount.toFixed(2)}`;
-        }
+        // ================= MENU MANAGER (ADD/EDIT/STOCK) =================
+        let editingItemId = null;
 
-        let currentLang = localStorage.getItem('appLang') || 'auto';
-        function browserLang() {
-            const l = (navigator.language || 'en').toLowerCase();
-            return l.startsWith('ta') ? 'ta' : 'en';
-        }
-        function resolveLang() {
-            return currentLang === 'auto' ? browserLang() : currentLang;
-        }
-        function getDisplayName(item) {
-            return resolveLang() === 'ta' ? item.nameTa : item.nameEn;
-        }
-        function getSecondaryName(item) {
-            return resolveLang() === 'ta' ? item.nameEn : item.nameTa;
-        }
-
-
-        // ==================================== APP INITIALIZATION ====================================
-
-        document.addEventListener('DOMContentLoaded', () => {
-            // No Firebase init needed. Simply start rendering.
-            loadStateFromStorage();
-            if (!initialInventory || Object.keys(initialInventory).length === 0) {
-                initialInventory = JSON.parse(JSON.stringify(inventory));
-                persistInitialInventory();
-            }
-            renderMenu();
-            renderCart();
-            showToast("Data loaded from local storage.", 'success');
-            const langSel = document.getElementById('lang-switch');
-            if (langSel) {
-                langSel.value = currentLang;
-                langSel.onchange = (e) => {
-                    currentLang = e.target.value;
-                    localStorage.setItem('appLang', currentLang);
-                    renderMenu();
-                };
-            }
-            initialInventory = JSON.parse(JSON.stringify(inventory));
-        });
-
-
-        // ==================================== QR CODE MANAGEMENT (IN-MEMORY) ====================================
-
-        function openQrUploadModal() {
-            document.getElementById('qr-upload-modal').classList.add('flex');
-            document.getElementById('qr-upload-modal').classList.remove('hidden');
+        function openManagerModal(type) {
+            const modal = document.getElementById('generic-modal');
+            const body = document.getElementById('modal-body');
+            const title = document.getElementById('modal-title');
             
-            const preview = document.getElementById('qr-image-preview');
-            const placeholder = document.getElementById('qr-placeholder');
-
-            if (qrCodeBase64) {
-                preview.src = `data:image/png;base64,${qrCodeBase64}`;
-                preview.style.display = 'block';
-                placeholder.style.display = 'none';
-            } else {
-                preview.style.display = 'none';
-                placeholder.style.display = 'block';
-            }
-
-            document.getElementById('qr-file-input').value = '';
-            document.getElementById('qr-upload-message').textContent = '';
-        }
-
-        /**
-         * Handles the file input and saves the QR code Base64 string to memory.
-         */
-        async function saveQrCode() {
-            const fileInput = document.getElementById('qr-file-input');
-            const messageEl = document.getElementById('qr-upload-message');
+            modal.classList.remove('hidden'); modal.classList.add('flex');
+            body.innerHTML = '';
             
-            if (fileInput.files.length === 0) {
-                messageEl.textContent = "Please select an image file to upload.";
-                return;
-            }
-
-            const file = fileInput.files[0];
-            messageEl.textContent = "Processing and Saving...";
-            messageEl.classList.remove('text-red-500');
-            messageEl.classList.add('text-green-600');
-
-            try {
-                const base64Data = await fileToBase64(file);
-                qrCodeBase64 = base64Data;
-                persistQr();
-                
-                const preview = document.getElementById('qr-image-preview');
-                const placeholder = document.getElementById('qr-placeholder');
-                preview.src = `data:image/png;base64,${qrCodeBase64}`;
-                preview.style.display = 'block';
-                placeholder.style.display = 'none';
-
-                showToast("QR Code uploaded successfully!", 'success');
-                messageEl.textContent = "QR Code saved!";
-                setTimeout(() => document.getElementById('qr-upload-modal').classList.add('hidden'), 1000);
-
-            } catch (e) {
-                console.error("Error saving QR code:", e);
-                messageEl.textContent = `Error saving QR code: ${e.message}`;
-                messageEl.classList.remove('text-green-600');
-                messageEl.classList.add('text-red-500');
-                showToast("Failed to save QR Code.", 'error');
+            if (type === 'menu') {
+                title.textContent = "Manage Menu & Items";
+                renderMenuEditor(body);
+            } else if (type === 'inventory') {
+                title.textContent = "Quick Stock Update";
+                renderInventoryEditor(body);
             }
         }
 
-
-        // ==================================== BILLING & CART LOGIC ====================================
-
-        /**
-         * Calculates the total cost of the cart.
-         */
-        function calculateTotal() {
-            return cart.reduce((sum, item) => sum + item.price, 0);
-        }
-
-        /**
-         * Renders the cart items and updates the total.
-         */
-        function renderCart() {
-            const cartList = document.getElementById('cart-list');
-            cartList.innerHTML = ''; // Clear existing list
-            
-            if (cart.length === 0) {
-                cartList.innerHTML = '<p class="text-gray-500 text-sm py-4 text-center">No items in cart.</p>';
-            } else {
-                cart.forEach((item, index) => {
-                    const listItem = document.createElement('div');
-                    listItem.className = 'flex justify-between items-center bg-gray-100 p-3 rounded-lg shadow-sm';
-                    
-                    // Display Text
-                    const quantityText = item.unit === 'units' 
-                        ? `${item.quantity} Unit(s)`
-                        : `${item.quantity} ${item.unit}`;
-                    
-                    const itemDetails = `
-                        <div class="flex-1 min-w-0">
-                            <p class="font-semibold text-gray-800 truncate">${item.item.nameEn} (${item.item.nameTa})</p>
-                            <!-- FIX: Using item.pricePerUnit instead of item.item.pricePerUnit which was undefined -->
-                            <p class="text-xs text-gray-500">${quantityText} @ ${formatCurrency(item.pricePerUnit)}/${item.unit}</p>
+        function renderMenuEditor(container) {
+            const formHtml = `
+                <div class="bg-gray-100 p-4 rounded-xl mb-6 border border-gray-200">
+                    <h4 class="font-bold text-gray-700 mb-3 text-sm uppercase tracking-wide" id="form-heading">Add New Item</h4>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <input id="in-name-en" type="text" placeholder="Name (English)" class="border p-2 rounded focus:ring-2 ring-green-500 outline-none">
+                        <input id="in-name-ta" type="text" placeholder="Name (Tamil)" class="border p-2 rounded focus:ring-2 ring-green-500 outline-none">
+                        
+                        <div class="flex gap-2">
+                            <input id="in-price-kg" type="number" placeholder="₹ Price / Kg" class="border p-2 rounded w-full">
+                            <input id="in-price-unit" type="number" placeholder="₹ Price / Unit" class="border p-2 rounded w-full">
                         </div>
-                        <div class="text-right ml-4">
-                            <p class="font-bold text-green-600">${formatCurrency(item.price)}</p>
+
+                        <div class="flex gap-2">
+                            <input id="in-stock-kg" type="number" placeholder="Initial Kg Stock" class="border p-2 rounded w-full bg-yellow-50">
+                            <input id="in-stock-unit" type="number" placeholder="Initial Unit Stock" class="border p-2 rounded w-full bg-yellow-50">
                         </div>
-                        <button onclick="removeFromCart(${index})" class="ml-2 p-1 text-red-500 hover:text-red-700 transition duration-150">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                                <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 10-2 0v6a1 1 0 102 0V8z" clip-rule="evenodd" />
-                            </svg>
-                        </button>
-                    `;
-                    listItem.innerHTML = itemDetails;
-                    cartList.appendChild(listItem);
-                });
-            }
+                        
+                        <div class="col-span-1 md:col-span-2 flex items-center gap-2 border p-2 rounded bg-white">
+                            <span class="text-xs font-bold text-gray-500">IMAGE:</span>
+                            <input id="in-img" type="file" accept="image/*" class="text-sm w-full">
+                        </div>
+                    </div>
+                    <div class="mt-4 flex gap-2 justify-end">
+                        <button onclick="resetMenuForm()" class="px-4 py-2 text-gray-600 hover:bg-gray-200 rounded text-sm font-bold">Cancel</button>
+                        <button onclick="saveMenuItem()" class="px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded text-sm font-bold shadow-lg" id="btn-save-item">Save Item</button>
+                    </div>
+                </div>
 
-            document.getElementById('cart-total').textContent = formatCurrency(calculateTotal());
+                <div class="overflow-x-auto rounded-lg border">
+                    <table class="w-full text-sm text-left text-gray-600">
+                        <thead class="text-xs text-gray-700 uppercase bg-gray-100">
+                            <tr>
+                                <th class="px-4 py-3">Image</th>
+                                <th class="px-4 py-3">Name</th>
+                                <th class="px-4 py-3">Prices</th>
+                                <th class="px-4 py-3 text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="menu-table-body" class="divide-y">
+                            </tbody>
+                    </table>
+                </div>
+            `;
+            container.innerHTML = formHtml;
+            renderMenuTableRows();
         }
 
-        /**
-         * Removes an item from the cart by index.
-         */
-        function removeFromCart(index) {
-            cart.splice(index, 1);
-            renderCart();
-            showToast("Item removed from cart.", 'error');
-            persistCart();
-        }
-
-        /**
-         * Clears the entire cart.
-         */
-        function clearCart() {
-            if (cart.length > 0) {
-                cart = [];
-                renderCart();
-                showToast("Cart cleared!", 'success');
-                persistCart();
-            }
-        }
-
-        /**
-         * Adds an item to the cart after quantity/unit selection.
-         */
-        window.addToCart = (itemId) => {
-            const item = menuItems.find(i => i.id === itemId);
-            if (!item) return;
-
-            const selectorId = `unit-selector-${itemId}`;
-            const unit = document.getElementById(selectorId).value;
-            const quantityInput = document.getElementById(`quantity-input-${itemId}`);
-            let quantity = parseFloat(quantityInput.value);
-
-            if (isNaN(quantity) || quantity <= 0) {
-                showToast("Please enter a valid quantity.", 'error');
-                return;
-            }
-
-            let pricePerUnit = 0;
-            let stockKey = '';
+        function renderMenuTableRows() {
+            const tbody = document.getElementById('menu-table-body');
+            tbody.innerHTML = '';
             
-            if (unit === 'units') {
-                pricePerUnit = item.priceUnit || 0;
-                stockKey = 'stockUnits';
-            } else if (unit === 'grams') {
-                pricePerUnit = (item.priceGram && item.priceGram > 0) ? item.priceGram : ((item.priceKg || 0) / 1000);
-                stockKey = 'stockKg';
-            } else if (unit === 'kilograms') {
-                pricePerUnit = item.priceKg || 0;
-                stockKey = 'stockKg';
-            }
+            [...menuItems].reverse().forEach(item => {
+                const imgDisplay = item.img 
+                    ? `<img src="${item.img}" class="w-10 h-10 object-cover rounded-full border">` 
+                    : `<div class="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center text-lg">🥦</div>`;
 
-            // Simple stock check
-            if (stockKey) {
-                let currentStock = inventory[item.id] ? inventory[item.id][stockKey] || 0 : 0;
-                
-                // Adjust for grams conversion check
-                let quantityToCheck = quantity;
-                if (unit === 'grams' && stockKey === 'stockKg') {
-                    // Convert grams to Kg for checking against stockKg
-                    quantityToCheck = quantity / 1000;
-                }
+                const row = document.createElement('tr');
+                row.className = "hover:bg-gray-50 bg-white";
+                row.innerHTML = `
+                    <td class="px-4 py-2">${imgDisplay}</td>
+                    <td class="px-4 py-2">
+                        <div class="font-bold text-gray-800">${item.nameEn}</div>
+                        <div class="text-xs text-gray-400">${item.nameTa}</div>
+                    </td>
+                    <td class="px-4 py-2">
+                        ${item.priceKg > 0 ? `<span class="bg-green-100 text-green-800 text-xs px-2 py-1 rounded mr-1">Kg: ${formatCurrency(item.priceKg)}</span>` : ''}
+                        ${item.priceUnit > 0 ? `<span class="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded">Unit: ${formatCurrency(item.priceUnit)}</span>` : ''}
+                    </td>
+                    <td class="px-4 py-2 text-right space-x-2">
+                        <button onclick="editMenuItem('${item.id}')" class="text-indigo-600 hover:text-indigo-900 font-bold text-xs border border-indigo-200 px-2 py-1 rounded">Edit</button>
+                        <button onclick="deleteMenuItem('${item.id}')" class="text-red-600 hover:text-red-900 font-bold text-xs border border-red-200 px-2 py-1 rounded">Del</button>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
 
-                if (quantityToCheck > currentStock) {
-                    const unitDisplay = stockKey === 'stockKg' ? 'Kg' : 'Units';
-                    showToast(`Insufficient stock! Only ${currentStock.toFixed(2)} ${unitDisplay} available.`, 'error');
-                    quantityInput.value = currentStock > 0 ? (unit === 'grams' ? (currentStock * 1000).toFixed(0) : currentStock) : 1;
+        async function saveMenuItem() {
+            const nameEn = document.getElementById('in-name-en').value.trim();
+            const nameTa = document.getElementById('in-name-ta').value.trim();
+            const priceKg = parseFloat(document.getElementById('in-price-kg').value) || 0;
+            const priceUnit = parseFloat(document.getElementById('in-price-unit').value) || 0;
+            const stockKg = parseFloat(document.getElementById('in-stock-kg').value) || 0;
+            const stockUnit = parseFloat(document.getElementById('in-stock-unit').value) || 0;
+            const fileInput = document.getElementById('in-img');
+
+            if (!nameEn) { showToast("Name is required", 'error'); return; }
+            if (priceKg === 0 && priceUnit === 0) { showToast("Set at least one price", 'error'); return; }
+
+            let imgData = null;
+            
+            if (fileInput.files.length > 0) {
+                try {
+                    imgData = await resizeImage(fileInput.files[0], 150, 0.7);
+                } catch(e) {
+                    showToast("Image Error", 'error');
                     return;
                 }
             }
 
-
-            const totalItemPrice = quantity * pricePerUnit;
-
-            cart.push({
-                itemId: item.id,
-                item: item,
-                quantity: quantity,
-                unit: unit,
-                price: totalItemPrice,
-                pricePerUnit: pricePerUnit, // Correctly store the calculated unit price here
-            });
-
-            quantityInput.value = 1; // Reset quantity input
-            renderCart();
-            showToast(`${item.nameEn} added to cart! Total: ${formatCurrency(totalItemPrice)}`, 'success');
-        }
-
-
-        // ==================================== TRANSACTION & PRINT/SHARE ====================================
-
-        /**
-         * Opens the payment modal.
-         */
-        function openPaymentModal() {
-            if (cart.length === 0) {
-                showToast("Cart is empty. Please add items first.", 'error');
-                return;
-            }
-
-            const total = calculateTotal();
-            document.getElementById('payment-due-amount').textContent = formatCurrency(total);
-            document.getElementById('payment-modal').classList.add('flex');
-            document.getElementById('payment-modal').classList.remove('hidden');
-
-            const qrArea = document.getElementById('qr-display-area');
-            const qrImage = document.getElementById('payment-qr-image');
-            const qrError = document.getElementById('qr-error-message');
-
-            if (qrCodeBase64) {
-                qrImage.src = `data:image/png;base64,${qrCodeBase64}`;
-                qrArea.classList.remove('hidden');
-                qrError.classList.add('hidden');
+            if (editingItemId) {
+                const index = menuItems.findIndex(i => i.id === editingItemId);
+                if (index !== -1) {
+                    menuItems[index].nameEn = nameEn;
+                    menuItems[index].nameTa = nameTa;
+                    menuItems[index].priceKg = priceKg;
+                    menuItems[index].priceUnit = priceUnit;
+                    if (imgData) menuItems[index].img = imgData;
+                    
+                    if (!inventory[editingItemId]) inventory[editingItemId] = { kg: 0, unit: 0 };
+                    
+                    if (document.getElementById('in-stock-kg').value !== "") inventory[editingItemId].kg = stockKg;
+                    if (document.getElementById('in-stock-unit').value !== "") inventory[editingItemId].unit = stockUnit;
+                    
+                    showToast("Item Updated!");
+                }
             } else {
-                qrArea.classList.remove('hidden'); 
-                qrImage.src = 'https://placehold.co/192x192/A0A0A0/FFFFFF?text=QR+Not+Set';
-                qrError.classList.remove('hidden');
+                const newId = nextId.toString();
+                const newItem = {
+                    id: newId,
+                    nameEn,
+                    nameTa: nameTa || nameEn,
+                    priceKg,
+                    priceUnit,
+                    img: imgData
+                };
+                menuItems.push(newItem);
+                inventory[newId] = { kg: stockKg, unit: stockUnit };
+                nextId++;
+                showToast("Item Created!");
             }
 
-            // Event listener for payment mode change
-            document.getElementById('payment-mode').onchange = (e) => {
-                if (e.target.value === 'upi') {
-                    qrArea.classList.remove('hidden');
-                } else {
-                    qrArea.classList.add('hidden');
-                }
-            };
+            save();
+            renderMenu();
+            resetMenuForm();
+            renderMenuTableRows();
         }
 
-        /**
-         * Completes the transaction: saves to temporary sales, updates inventory (in-memory), and clears cart.
-         */
-        function completeTransaction() {
-            if (cart.length === 0) {
-                showToast("Transaction failed: Cart is empty.", 'error');
-                return;
-            }
+        function editMenuItem(id) {
+            const item = menuItems.find(i => i.id === id);
+            const itemInv = inventory[id] || {kg:0, unit:0};
+            if(!item) return;
 
-            const total = calculateTotal();
-            const paymentMode = document.getElementById('payment-mode').value;
+            editingItemId = id;
             
-            // 1. Update Inventory (In-Memory)
-            for (const item of cart) {
-                const stockData = inventory[item.itemId] || { stockKg: 0, stockUnits: 0 };
-                let stockKey = '';
-                let quantityDeducted = item.quantity;
+            document.getElementById('form-heading').textContent = `Editing: ${item.nameEn}`;
+            document.getElementById('btn-save-item').textContent = "Update Item";
+            document.getElementById('btn-save-item').className = "px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-sm font-bold shadow-lg";
 
-                if (item.unit === 'units') {
-                    stockKey = 'stockUnits';
-                } else if (item.unit === 'grams') {
-                    stockKey = 'stockKg';
-                    quantityDeducted = quantityDeducted / 1000; // Grams to Kg deduction
-                } else if (item.unit === 'kilograms') {
-                    stockKey = 'stockKg';
-                }
-                
-                if (stockKey) {
-                    // Update the in-memory inventory
-                    stockData[stockKey] = Math.max(0, stockData[stockKey] - quantityDeducted);
-                    inventory[item.itemId] = stockData;
-                }
-            }
-
-            // 2. Add to Temporary Sales Log
-            const saleRecord = {
-                timestamp: new Date(),
-                totalAmount: total,
-                paymentMode: paymentMode,
-                items: cart.map(item => ({
-                    id: item.itemId,
-                    name: item.item.nameEn,
-                    qty: item.quantity,
-                    unit: item.unit,
-                    price: item.price,
-                })),
-            };
-            salesHistory.push(saleRecord);
-            persistSalesHistory();
-            persistInventory();
-
-            // 3. Success and Cleanup
-            document.getElementById('payment-modal').classList.add('hidden');
-            clearCart();
-            renderMenu(); // Re-render menu to show updated stock
-            showToast(`Sale completed successfully! Total: ${formatCurrency(total)}`, 'success');
+            document.getElementById('in-name-en').value = item.nameEn;
+            document.getElementById('in-name-ta').value = item.nameTa;
+            document.getElementById('in-price-kg').value = item.priceKg;
+            document.getElementById('in-price-unit').value = item.priceUnit;
+            
+            document.getElementById('in-stock-kg').value = itemInv.kg;
+            document.getElementById('in-stock-unit').value = itemInv.unit;
+            
+            document.getElementById('modal-body').scrollTop = 0;
         }
 
-        /**
-         * Generates and opens a print-friendly view of the current bill.
-         */
-        function printBill() {
-            if (cart.length === 0) {
-                showToast("Cart is empty. Cannot print bill.", 'error');
-                return;
-            }
+        function deleteMenuItem(id) {
+            if(!confirm("Delete this item permanently? This will NOT affect past sales history, but the item will be gone from the menu.")) return;
+            menuItems = menuItems.filter(i => i.id !== id);
+            delete inventory[id];
+            save();
+            renderMenu();
+            renderMenuTableRows();
+            showToast("Item Deleted.");
+        }
 
-            const total = calculateTotal();
-            let billHtml = `
-                <div class="p-6">
-                    <h1 class="text-3xl font-extrabold text-center mb-1">V S TRADERS</h1>
-                    <p class="text-center text-sm mb-4">Invoice (விலைப்பட்டியல்) - ${new Date().toLocaleString()}</p>
-                    <hr class="border-t-2 border-black mb-4">
-                    <div class="flex font-bold mb-1">
-                        <span class="w-1/2">Item (பொருள்)</span>
-                        <span class="w-1/4 text-center">Qty/Unit (அளவு/அலகு)</span>
-                        <span class="w-1/4 text-right">Price (விலை)</span>
-                    </div>
-                    <hr class="border-t border-gray-400 mb-1">
-            `;
+        function resetMenuForm() {
+            editingItemId = null;
+            document.getElementById('form-heading').textContent = "Add New Item";
+            document.getElementById('btn-save-item').textContent = "Save Item";
+            document.getElementById('btn-save-item').className = "px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded text-sm font-bold shadow-lg";
             
-            cart.forEach(item => {
-                const quantityText = item.unit === 'units' 
-                    ? `${item.quantity} Unit(s)`
-                    : `${item.quantity} ${item.unit}`;
+            document.getElementById('in-name-en').value = '';
+            document.getElementById('in-name-ta').value = '';
+            document.getElementById('in-price-kg').value = '';
+            document.getElementById('in-price-unit').value = '';
+            document.getElementById('in-stock-kg').value = '';
+            document.getElementById('in-stock-unit').value = '';
+            document.getElementById('in-img').value = '';
+        }
 
-                billHtml += `
-                    <div class="flex text-sm py-1">
-                        <span class="w-1/2">${item.item.nameEn} (${item.item.nameTa})</span>
-                        <span class="w-1/4 text-center">${quantityText}</span>
-                        <span class="w-1/4 text-right">${formatCurrency(item.price)}</span>
-                    </div>
-                `;
+        // ================= INVENTORY EDITOR (Simple) =================
+        function renderInventoryEditor(container) {
+            let html = `<div class="overflow-x-auto"><table class="w-full text-sm text-left">
+                <thead class="bg-gray-100 text-xs uppercase"><tr><th class="p-3">Item</th><th class="p-3">Stock (Kg)</th><th class="p-3">Stock (Units)</th></tr></thead>
+                <tbody class="divide-y">`;
+            
+            menuItems.forEach(i => {
+                const inv = inventory[i.id] || {kg:0, unit:0};
+                html += `
+                <tr>
+                    <td class="p-3 font-medium">${i.nameEn}</td>
+                    <td class="p-3">
+                        <div class="flex items-center">
+                            <button onclick="updateStock('${i.id}','kg',-1)" class="w-8 h-8 bg-gray-200 rounded hover:bg-gray-300 font-bold">-</button>
+                            <input type="number" class="w-16 text-center mx-1 border rounded h-8" value="${inv.kg.toFixed(2)}" onchange="setStock('${i.id}','kg',this.value)">
+                            <button onclick="updateStock('${i.id}','kg',1)" class="w-8 h-8 bg-gray-200 rounded hover:bg-gray-300 font-bold">+</button>
+                        </div>
+                        <div class="text-xs text-gray-400 mt-1 ml-1">= ${(inv.kg*1000).toFixed(0)} g</div>
+                    </td>
+                    <td class="p-3">
+                        <div class="flex items-center">
+                            <button onclick="updateStock('${i.id}','unit',-1)" class="w-8 h-8 bg-gray-200 rounded hover:bg-gray-300 font-bold">-</button>
+                            <input type="number" class="w-16 text-center mx-1 border rounded h-8" value="${inv.unit}" onchange="setStock('${i.id}','unit',this.value)">
+                            <button onclick="updateStock('${i.id}','unit',1)" class="w-8 h-8 bg-gray-200 rounded hover:bg-gray-300 font-bold">+</button>
+                        </div>
+                    </td>
+                </tr>`;
             });
-
-            billHtml += `
-                    <hr class="border-t border-gray-400 mt-4">
-                    <div class="flex justify-between font-bold text-xl mt-2">
-                        <span>TOTAL (மொத்தம்)</span>
-                        <span>${formatCurrency(total)}</span>
-                    </div>
-                    <hr class="border-t-2 border-black mt-4">
-                    <p class="text-center text-xs mt-4">Thank you for shopping with V S TRADERS!</p>
-                </div>
-            `;
-            
-            document.getElementById('report-content').innerHTML = billHtml;
-            
-            // Wait for DOM update before printing
-            setTimeout(() => window.print(), 100);
+            html += `</tbody></table></div>`;
+            container.innerHTML = html;
         }
 
-        /**
-         * Shares the current bill via a WhatsApp link.
-         */
-        function shareBill() {
-            if (cart.length === 0) {
-                showToast("Cart is empty. Nothing to share.", 'error');
-                return;
+        function updateStock(id, type, delta) {
+            if(!inventory[id]) inventory[id] = {kg:0, unit:0};
+            if (type === 'kg') {
+                inventory[id][type] = Math.max(0, inventory[id][type] + delta);
+            } else { // unit
+                inventory[id][type] = Math.max(0, inventory[id][type] + delta);
             }
-
-            const total = calculateTotal();
-            let message = `V S TRADERS Bill\nTotal: ${formatCurrency(total)}\n\nItems:\n`;
-
-            cart.forEach(item => {
-                const quantityText = item.unit === 'units' 
-                    ? `${item.quantity} Unit(s)`
-                    : `${item.quantity} ${item.unit}`;
-                message += `- ${item.item.nameEn} (${item.item.nameTa}): ${quantityText} @ ${formatCurrency(item.price)}\n`;
-            });
-            message += "\nThank you!";
-
-            // Encode the message and open WhatsApp
-            const whatsappUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`;
-            window.open(whatsappUrl, '_blank');
-            showToast("Opening WhatsApp with bill details...", 'success');
+            save();
+            renderInventoryEditor(document.getElementById('modal-body'));
+        }
+        function setStock(id, type, val) {
+            if(!inventory[id]) inventory[id] = {kg:0, unit:0};
+            inventory[id][type] = parseFloat(val) || 0;
+            save();
+            renderInventoryEditor(document.getElementById('modal-body'));
         }
 
-
-        // ==================================== UI RENDERING ====================================
-
-        /**
-         * Renders the product cards in the main menu area.
-         */
+        // ================= MAIN UI RENDER =================
         function renderMenu() {
-            const menuContainer = document.getElementById('product-menu');
-            menuContainer.innerHTML = '';
-
-            if (menuItems.length === 0) {
-                menuContainer.innerHTML = `<p class="col-span-full text-center py-10 text-gray-500">
-                    No items in menu. Use 'Manage Menu' to add items.
-                </p>`;
-                return;
-            }
+            const container = document.getElementById('product-menu');
+            container.innerHTML = '';
+            
+            const lang = document.getElementById('lang-switch').value;
+            const isTa = lang === 'ta' || (lang==='auto' && navigator.language.startsWith('ta'));
 
             menuItems.forEach(item => {
-                const stockKg = inventory[item.id]?.stockKg || 0;
-                const stockUnits = inventory[item.id]?.stockUnits || 0;
+                let options = '';
                 
-                const card = document.createElement('div');
-                card.className = 'bg-white rounded-xl shadow-lg hover:shadow-xl transition duration-300 overflow-hidden border border-gray-100';
-                
-                let selectOptions = '';
                 if (item.priceKg > 0) {
-                    selectOptions += `<option value="kilograms">Kg (${formatCurrency(item.priceKg)}/Kg)</option>`;
-                }
-                if ((item.priceGram || 0) > 0) {
-                    selectOptions += `<option value="grams">g (${formatCurrency(item.priceGram)}/g)</option>`;
-                } else if (item.priceKg > 0) {
-                    selectOptions += `<option value="grams">g (${formatCurrency(item.priceKg / 1000)}/g)</option>`;
+                    options += `<option value="kg">Kg (${formatCurrency(item.priceKg)})</option><option value="g">Grams</option>`;
                 }
                 if (item.priceUnit > 0) {
-                    selectOptions += `<option value="units">Unit (${formatCurrency(item.priceUnit)}/Unit)</option>`;
+                    options += `<option value="unit">Piece (${formatCurrency(item.priceUnit)})</option>`;
                 }
+                if (!options) return;
 
-                const imageUrl = item.imageUrl || `https://placehold.co/300x200/4CAF50/FFFFFF?text=${item.nameEn.substring(0, 4).toUpperCase()}`;
+                const displayName = isTa ? item.nameTa : item.nameEn;
+                const subName = isTa ? item.nameEn : item.nameTa;
+                
+                const stock = inventory[item.id] || {kg:0, unit:0};
+                let badge = '';
+                if(stock.kg < 1 && stock.unit < 5) badge = `<span class="absolute top-2 right-2 bg-red-500 text-white text-[10px] px-2 py-1 rounded-full shadow z-10 font-bold">LOW STOCK</span>`;
 
+                const imgContent = item.img 
+                    ? `<img src="${item.img}" class="w-full h-full object-cover">`
+                    : `<div class="w-full h-full bg-green-50 flex items-center justify-center text-4xl">🥦</div>`;
+
+                const card = document.createElement('div');
+                card.className = "bg-white rounded-xl shadow-sm hover:shadow-lg transition-all border border-gray-100 relative flex flex-col overflow-hidden group";
                 card.innerHTML = `
-                    <img src="${imageUrl}" alt="${getDisplayName(item)}" onerror="this.onerror=null;this.src='https://placehold.co/300x200/A0A0A0/FFFFFF?text=Veg';" class="w-full h-40 object-cover">
-                    <div class="p-3">
-                        <h4 class="text-lg font-bold text-gray-800 truncate">${getDisplayName(item)}</h4>
-                        <p class="text-xs text-green-700 font-medium">${getSecondaryName(item)}</p>
-                        <p class="text-xs text-gray-500 mt-1">Stock: ${stockKg.toFixed(2)} Kg | ${stockUnits} Units</p>
-                        
-                        <div class="mt-3 space-y-2">
-                            <select id="unit-selector-${item.id}" class="w-full text-sm border-gray-300 rounded-lg p-1.5 focus:ring-green-500 focus:border-green-500">
-                                ${selectOptions}
-                            </select>
-                            <input type="number" id="quantity-input-${item.id}" placeholder="Quantity (அளவு)" value="1" min="0.001" step="any" class="w-full p-2 border rounded-lg text-sm">
-                            <button onclick="addToCart('${item.id}')" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold text-sm py-2 rounded-lg shadow-md transition duration-200">
-                                Add to Cart (வண்டியில் சேர்)
-                            </button>
+                    ${badge}
+                    <div class="h-32 w-full relative">
+                        ${imgContent}
+                        <div class="absolute bottom-0 w-full bg-gradient-to-t from-black/60 to-transparent p-2">
+                             <h3 class="font-bold text-white text-lg leading-none drop-shadow-md">${displayName}</h3>
+                             <p class="text-xs text-gray-200 drop-shadow">${subName}</p>
                         </div>
                     </div>
-                `;
-                menuContainer.appendChild(card);
-            });
-        }
-
-
-        // ==================================== MANAGER MODALS (MENU/STOCK) ====================================
-
-        /**
-         * Opens the main manager modal and loads the appropriate content.
-         */
-        function openManagerModal(view) {
-            const modal = document.getElementById('generic-modal');
-            const title = document.getElementById('modal-title');
-            const body = document.getElementById('modal-body');
-
-            title.textContent = view === 'menu' ? 'Manage Menu (மெனுவை நிர்வகி)' : 'Manage Stock Inventory (பங்கு சரக்கு நிர்வகி)';
-            body.innerHTML = ''; // Clear body
-
-            if (view === 'menu') {
-                renderMenuManager(body);
-            } else if (view === 'inventory') {
-                renderInventoryManager(body);
-            }
-
-            modal.classList.add('flex');
-            modal.classList.remove('hidden');
-        }
-
-        /**
-         * Renders the Menu management interface (CRUD for items).
-         */
-        function renderMenuManager(body) {
-            // 1. New Item Form
-            body.innerHTML = `
-                <div class="flex justify-end mb-4">
-                    <button onclick="resetAppData()" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg mr-2">Reset App Data</button>
-                    <button onclick="resetAppDataAndReload()" class="bg-red-700 hover:bg-red-800 text-white font-bold py-2 px-4 rounded-lg">Reset & Reload</button>
-                </div>
-                <div class="p-4 border rounded-lg bg-indigo-50 mb-6">
-                    <h4 class="font-bold text-lg mb-3">Add New Item</h4>
-                    <form id="new-item-form" class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <input type="text" id="nameEn" placeholder="Name (English, e.g., Onion)" required class="p-2 border rounded-lg">
-                        <input type="text" id="nameTa" placeholder="Name (Tamil, e.g., வெங்காயம்)" required class="p-2 border rounded-lg">
-                        <input type="number" id="priceKg" placeholder="Price per Kg (e.g., 50)" step="0.01" min="0" class="p-2 border rounded-lg">
-                        <input type="number" id="priceGram" placeholder="Price per Gram (e.g., 0.05)" step="0.0001" min="0" class="p-2 border rounded-lg">
-                        <input type="number" id="priceUnit" placeholder="Price per Unit (e.g., 5)" step="0.01" min="0" class="p-2 border rounded-lg">
-                        <div class="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
-                            <input type="file" id="imageFile" accept="image/*" class="p-2 border rounded-lg" />
-                            <div class="flex items-center space-x-3">
-                                <img id="imagePreview" src="https://placehold.co/64x64/A0A0A0/FFFFFF?text=IMG" alt="Preview" class="w-16 h-16 object-cover rounded" />
-                                <span class="text-xs text-gray-500">Optional item image</span>
-                            </div>
+                    <div class="p-3 flex flex-col gap-2 bg-white">
+                        <div class="flex gap-2">
+                            <select id="u-${item.id}" class="bg-gray-50 border border-gray-200 text-sm rounded w-2/3 p-1 outline-none focus:border-green-500">${options}</select>
+                            <input id="q-${item.id}" type="number" value="1" class="border border-gray-200 rounded w-1/3 text-center p-1 outline-none focus:border-green-500" min="0.01">
                         </div>
-                        <div class="md:col-span-2">
-                            <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 rounded-lg transition duration-200">
-                                Add Item
-                            </button>
-                        </div>
-                    </form>
-                </div>
-            `;
-            const imgInput = document.getElementById('imageFile');
-            const imgPreview = document.getElementById('imagePreview');
-            imgInput.onchange = (e) => {
-                const file = e.target.files[0];
-                if (!file) {
-                    imgPreview.src = 'https://placehold.co/64x64/A0A0A0/FFFFFF?text=IMG';
-                    return;
-                }
-                const reader = new FileReader();
-                reader.onload = () => { imgPreview.src = reader.result; };
-                reader.readAsDataURL(file);
-            };
-
-            document.getElementById('new-item-form').onsubmit = (e) => {
-                e.preventDefault();
-                const baseData = {
-                    nameEn: document.getElementById('nameEn').value,
-                    nameTa: document.getElementById('nameTa').value,
-                    priceKg: parseFloat(document.getElementById('priceKg').value) || 0,
-                    priceGram: parseFloat(document.getElementById('priceGram').value) || 0,
-                    priceUnit: parseFloat(document.getElementById('priceUnit').value) || 0,
-                };
-                if (!baseData.nameEn || !baseData.nameTa) {
-                    showToast('Please enter item names in English and Tamil.', 'error');
-                    return;
-                }
-                const hasPrice = (baseData.priceKg && baseData.priceKg > 0) || (baseData.priceGram && baseData.priceGram > 0) || (baseData.priceUnit && baseData.priceUnit > 0);
-                if (!hasPrice) {
-                    showToast('Please provide at least one price (Kg/g/Unit).', 'error');
-                    return;
-                }
-                const file = imgInput.files[0];
-                if (file) {
-                    const reader = new FileReader();
-                    reader.onload = () => {
-                        saveMenuItem({ ...baseData, imageUrl: reader.result });
-                    };
-                    reader.readAsDataURL(file);
-                } else {
-                    saveMenuItem(baseData);
-                }
-            };
-
-            // 2. Existing Items List (Redesigned with thumbnails)
-            let listHtml = '<h4 class="font-bold text-lg mb-3">Existing Items</h4>';
-            menuItems.forEach(item => {
-                const thumb = item.imageUrl || `https://placehold.co/64x64/4CAF50/FFFFFF?text=${item.nameEn.substring(0,2).toUpperCase()}`;
-                listHtml += `
-                    <div class="p-3 mb-3 bg-white rounded-xl border shadow-sm hover:shadow-md transition flex items-center">
-                        <img src="${thumb}" alt="${item.nameEn}" class="w-14 h-14 rounded-lg object-cover border mr-4" onerror="this.onerror=null;this.src='https://placehold.co/64x64/A0A0A0/FFFFFF?text=IMG';" />
-                        <div class="flex-1">
-                            <div class="flex items-center justify-between">
-                                <p class="font-semibold text-gray-900">${item.nameEn} <span class="text-gray-500 text-xs">(${item.nameTa})</span></p>
-                                <div class="text-xs">
-                                    <span class="inline-block bg-green-100 text-green-800 px-2 py-0.5 rounded mr-1">Kg: ₹${(item.priceKg||0).toFixed(2)}</span>
-                                    <span class="inline-block bg-teal-100 text-teal-800 px-2 py-0.5 rounded mr-1">g: ₹${(item.priceGram||((item.priceKg||0)/1000)).toFixed(2)}</span>
-                                    <span class="inline-block bg-blue-100 text-blue-800 px-2 py-0.5 rounded">Unit: ₹${(item.priceUnit||0).toFixed(2)}</span>
-                                </div>
-                            </div>
-                            <div class="mt-2 flex space-x-2">
-                                <button onclick="editMenuItem('${item.id}')" class="px-3 py-1 text-sm bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow">Edit</button>
-                                <button onclick="deleteMenuItem('${item.id}')" class="px-3 py-1 text-sm bg-red-600 hover:bg-red-700 text-white rounded-lg shadow">Delete</button>
-                            </div>
-                        </div>
+                        <button onclick="addToCart('${item.id}')" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 rounded text-sm transition-colors shadow-sm">ADD TO BILL</button>
                     </div>
                 `;
+                container.appendChild(card);
             });
-            body.innerHTML += `<div class="mt-6">${listHtml}</div>`;
-
-            
         }
         
-        /**
-         * Saves a new menu item to memory.
-         */
-        function saveMenuItem(itemData) {
-            const newItem = {
-                ...itemData,
-                id: `item${nextItemId++}` // Simple ID generation
-            };
-            menuItems.push(newItem);
-            inventory[newItem.id] = { stockKg: 0, stockUnits: 0 }; // Initialize stock
-            showToast(`Item '${itemData.nameEn}' added successfully!`, 'success');
-            // Re-render the menu manager and the main menu
-            renderMenuManager(document.getElementById('modal-body'));
-            renderMenu();
-            persistMenuItems();
-            persistInventory();
-            persistNextItemId();
-            const modal = document.getElementById('generic-modal');
-            if (modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); }
-        }
+        document.getElementById('lang-switch').addEventListener('change', renderMenu);
 
-        /**
-         * Deletes a menu item from memory.
-         */
-        function deleteMenuItem(itemId) {
-            if (!confirm("Are you sure you want to delete this menu item?")) return;
 
-            menuItems = menuItems.filter(item => item.id !== itemId);
-            delete inventory[itemId];
-            cart = cart.filter(item => item.itemId !== itemId); // Remove from cart
-
-            showToast("Item deleted successfully!", 'success');
-            renderMenuManager(document.getElementById('modal-body')); // Re-render manager
-            renderMenu(); // Re-render main menu
-            renderCart(); // Re-render cart
-            persistMenuItems();
-            persistInventory();
-            persistCart();
-        }
-
-        /**
-         * Handles editing of a menu item (simple prompt for now).
-         */
-        function editMenuItem(itemId) {
-            const item = menuItems.find(i => i.id === itemId);
+        // ================= CART LOGIC (Auto Conversion) =================
+        function addToCart(id) {
+            const item = menuItems.find(i => i.id === id);
             if (!item) return;
 
-            const body = document.getElementById('modal-body');
-            const thumb = item.imageUrl || 'https://placehold.co/100x100/A0A0A0/FFFFFF?text=IMG';
-            body.innerHTML = `
-                <div class="p-4 border rounded-xl bg-white shadow-sm">
-                    <h4 class="font-bold text-lg mb-4">Edit Item</h4>
-                    <form id="edit-item-form" class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <label class="block text-xs text-gray-600 mb-1">Name (English)</label>
-                            <input type="text" id="edit-nameEn" value="${item.nameEn}" required class="p-2 border rounded-lg w-full">
-                        </div>
-                        <div>
-                            <label class="block text-xs text-gray-600 mb-1">Name (Tamil)</label>
-                            <input type="text" id="edit-nameTa" value="${item.nameTa}" required class="p-2 border rounded-lg w-full">
-                        </div>
-                        <div>
-                            <label class="block text-xs text-gray-600 mb-1">Price per Kg</label>
-                            <input type="number" id="edit-priceKg" value="${item.priceKg}" step="0.01" min="0" required class="p-2 border rounded-lg w-full">
-                        </div>
-                        <div>
-                            <label class="block text-xs text-gray-600 mb-1">Price per Gram</label>
-                            <input type="number" id="edit-priceGram" value="${item.priceGram || ''}" step="0.0001" min="0" class="p-2 border rounded-lg w-full">
-                        </div>
-                        <div>
-                            <label class="block text-xs text-gray-600 mb-1">Price per Unit</label>
-                            <input type="number" id="edit-priceUnit" value="${item.priceUnit}" step="0.01" min="0" class="p-2 border rounded-lg w-full">
-                        </div>
-                        <div class="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
-                            <div>
-                                <label class="block text-xs text-gray-600 mb-1">Change Image</label>
-                                <input type="file" id="edit-imageFile" accept="image/*" class="p-2 border rounded-lg w-full" />
-                            </div>
-                            <div class="flex items-center space-x-3">
-                                <img id="edit-imagePreview" src="${thumb}" alt="Preview" class="w-20 h-20 object-cover rounded border" />
-                                <span class="text-xs text-gray-500">Current/Selected image</span>
-                            </div>
-                        </div>
-                        <div class="md:col-span-2 flex justify-end space-x-3 mt-2">
-                            <button type="button" id="edit-cancel" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded-lg">Cancel</button>
-                            <button type="submit" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg">Save Changes</button>
-                        </div>
-                    </form>
-                </div>
-            `;
+            const unitSelect = document.getElementById(`u-${id}`);
+            const qtyInput = document.getElementById(`q-${id}`);
+            const unit = unitSelect.value;
+            const qty = parseFloat(qtyInput.value);
 
-            const imgInput = document.getElementById('edit-imageFile');
-            const imgPreview = document.getElementById('edit-imagePreview');
-            let newImageDataUrl = null;
-            imgInput.onchange = (e) => {
-                const file = e.target.files[0];
-                if (!file) { newImageDataUrl = null; imgPreview.src = thumb; return; }
-                const reader = new FileReader();
-                reader.onload = () => { newImageDataUrl = reader.result; imgPreview.src = newImageDataUrl; };
-                reader.readAsDataURL(file);
-            };
+            if(isNaN(qty) || qty <= 0) { showToast("Invalid Quantity", 'error'); return; }
 
-            document.getElementById('edit-cancel').onclick = () => {
-                renderMenuManager(body);
-            };
-
-            document.getElementById('edit-item-form').onsubmit = (e) => {
-                e.preventDefault();
-                item.nameEn = document.getElementById('edit-nameEn').value;
-                item.nameTa = document.getElementById('edit-nameTa').value;
-                item.priceKg = parseFloat(document.getElementById('edit-priceKg').value) || 0;
-                item.priceGram = parseFloat(document.getElementById('edit-priceGram').value) || 0;
-                item.priceUnit = parseFloat(document.getElementById('edit-priceUnit').value) || 0;
-                if (newImageDataUrl) item.imageUrl = newImageDataUrl;
-
-                showToast('Item updated successfully!', 'success');
-                renderMenuManager(body);
-                renderMenu();
-                persistMenuItems();
-            };
-        }
-
-        /**
-         * Renders the Stock Inventory management interface.
-         */
-        function renderInventoryManager(body) {
-            // Inventory Update Form
-            let formHtml = '<h4 class="font-bold text-lg mb-3">Update Stock</h4>';
-            formHtml += '<form id="inventory-update-form" class="space-y-4">';
-
-            if (menuItems.length === 0) {
-                 formHtml += `<p class="text-gray-500">No menu items found. Add items in 'Manage Menu' first.</p>`;
+            const inv = inventory[id] || {kg: 0, unit: 0};
+            let avail = 0;
+            let req = 0;
+            let pricePer = 0;
+            let label = '';
+            
+            if(unit === 'unit') {
+                avail = inv.unit;
+                req = qty;
+                pricePer = item.priceUnit;
+                label = `${qty} Pcs`;
+                if(req > avail) { showToast(`Only ${avail} units left in stock`, 'error'); return; }
             } else {
-                menuItems.forEach(item => {
-                    const stockKg = inventory[item.id]?.stockKg || 0;
-                    const stockUnits = inventory[item.id]?.stockUnits || 0;
-                    
-                    formHtml += `
-                        <div class="p-3 border rounded-lg bg-gray-50">
-                            <p class="font-semibold text-gray-800 mb-2">${item.nameEn} (${item.nameTa})</p>
-                            <div class="grid grid-cols-2 gap-3">
-                                <div>
-                                    <label class="block text-xs text-gray-500">Stock (Kg)</label>
-                                    <input type="number" id="kg-${item.id}" value="${stockKg.toFixed(2)}" step="0.01" min="0" class="w-full p-2 border rounded-lg text-sm">
-                                </div>
-                                <div>
-                                    <label class="block text-xs text-gray-500">Stock (Units)</label>
-                                    <input type="number" id="unit-${item.id}" value="${stockUnits}" step="1" min="0" class="w-full p-2 border rounded-lg text-sm">
-                                </div>
-                            </div>
-                        </div>
-                    `;
+                avail = inv.kg; // Available stock in Kilograms
+                pricePer = item.priceKg;
+                if (unit === 'g') {
+                    req = qty / 1000; // Required amount in Kilograms
+                    label = `${qty} g`;
+                } else { // 'kg'
+                    req = qty; // Required amount in Kilograms
+                    label = `${qty} Kg`;
+                }
+                
+                if(req > avail) { showToast(`Only ${(avail * 1000).toFixed(0)} grams (${avail.toFixed(2)} Kg) left`, 'error'); return; }
+            }
+
+            // Calculate Price
+            const price = pricePer * (unit === 'unit' ? qty : req);
+
+            // Check if item with same unit already in cart
+            const existingItemIndex = cart.findIndex(c => c.id === id && c.unit === unit);
+
+            if (existingItemIndex !== -1) {
+                cart[existingItemIndex].qty += qty;
+                cart[existingItemIndex].reqKgUnit += (unit === 'unit' ? qty : req); // total units/kg requested
+                cart[existingItemIndex].subtotal += price;
+            } else {
+                cart.push({
+                    id,
+                    name: item.nameEn,
+                    qty: qty, // User entered quantity (e.g., 500 for grams, 2 for kg)
+                    reqKgUnit: (unit === 'unit' ? qty : req), // Quantity used for deduction/price calculation (e.g., 0.5 for grams, 2 for kg/unit)
+                    unit,
+                    pricePer,
+                    subtotal: price,
+                    label 
                 });
-                formHtml += `
-                    <button type="submit" class="w-full bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-2 rounded-lg transition duration-200">
-                        Save All Stock Changes
-                    </button>
-                `;
             }
 
-            formHtml += '</form>';
-            body.innerHTML = formHtml;
-
-            if (menuItems.length > 0) {
-                document.getElementById('inventory-update-form').onsubmit = (e) => {
-                    e.preventDefault();
-                    saveInventoryUpdates();
-                };
-            }
+            qtyInput.value = 1; // Reset quantity input
+            showToast(`${item.nameEn} added to bill!`);
+            renderCart();
         }
 
-        /**
-         * Saves all inventory updates to memory.
-         */
-        function saveInventoryUpdates() {
-            menuItems.forEach(item => {
-                const kgInput = document.getElementById(`kg-${item.id}`);
-                const unitInput = document.getElementById(`unit-${item.id}`);
+        function updateCartItem(index, newQty) {
+            if (newQty <= 0) {
+                cart.splice(index, 1);
+                showToast("Item removed from cart.", 'warning');
+            } else {
+                const cartItem = cart[index];
+                const item = menuItems.find(i => i.id === cartItem.id);
+                if (!item) return;
+
+                const diffQty = newQty - cartItem.qty;
+                const inv = inventory[cartItem.id] || {kg: 0, unit: 0};
+                let currentReq = 0;
+                let pricePer = 0;
+
+                if (cartItem.unit === 'unit') {
+                    currentReq = newQty;
+                    pricePer = item.priceUnit;
+                    if (currentReq > inv.unit) { showToast(`Cannot add. Only ${inv.unit} units available.`, 'error'); return; }
+                } else { // kg or g
+                    pricePer = item.priceKg;
+                    const newReqKg = (cartItem.unit === 'g' ? newQty / 1000 : newQty);
+                    if (newReqKg > inv.kg + (cartItem.unit === 'g' ? cartItem.qty/1000 : cartItem.qty)) { 
+                        showToast(`Cannot add. Only ${(inv.kg*1000).toFixed(0)} grams available.`, 'error'); 
+                        return; 
+                    }
+                    cartItem.reqKgUnit = newReqKg;
+                }
                 
-                inventory[item.id] = {
-                    stockKg: parseFloat(kgInput.value) || 0,
-                    stockUnits: parseInt(unitInput.value) || 0,
-                };
+                cartItem.qty = newQty;
+                cartItem.subtotal = pricePer * cartItem.reqKgUnit;
+                cartItem.label = cartItem.unit === 'unit' ? `${newQty} Pcs` : (cartItem.unit === 'kg' ? `${newQty} Kg` : `${newQty} g`);
+
+            }
+            renderCart();
+        }
+
+        function renderCart() {
+            const list = document.getElementById('cart-list');
+            list.innerHTML = '';
+            let total = 0;
+
+            if (cart.length === 0) {
+                list.innerHTML = `<div class="text-center text-gray-400 text-sm mt-10">Cart is empty</div>`;
+                document.getElementById('cart-total').textContent = formatCurrency(0);
+                return;
+            }
+
+            cart.forEach((item, index) => {
+                total += item.subtotal;
+                const cartItemDiv = document.createElement('div');
+                cartItemDiv.className = "flex justify-between items-center bg-gray-50 p-3 rounded-lg border";
+                cartItemDiv.innerHTML = `
+                    <div class="flex-1 min-w-0">
+                        <p class="font-bold text-gray-800 truncate">${getDisplayName(menuItems.find(i => i.id === item.id))}</p>
+                        <p class="text-xs text-gray-500">${item.label} @ ${formatCurrency(item.pricePer)}/${item.unit === 'unit' ? 'Pc' : 'Kg'}</p>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <input type="number" 
+                               value="${item.qty}" 
+                               min="${item.unit === 'g' ? 1 : 0.01}" 
+                               step="${item.unit === 'g' ? 1 : 0.01}"
+                               onchange="updateCartItem(${index}, parseFloat(this.value))" 
+                               class="w-16 text-center border rounded p-1 text-sm">
+                        <span class="font-bold text-green-700 w-20 text-right">${formatCurrency(item.subtotal)}</span>
+                        <button onclick="updateCartItem(${index}, 0)" class="text-red-500 hover:text-red-700 text-lg leading-none">&times;</button>
+                    </div>
+                `;
+                list.appendChild(cartItemDiv);
             });
 
-            showToast("Inventory updated successfully!", 'success');
-            renderInventoryManager(document.getElementById('modal-body'));
-            renderMenu();
-            persistInventory();
+            document.getElementById('cart-total').textContent = formatCurrency(total);
+        }
+
+        function clearCart() {
+            if (cart.length > 0 && confirm("Clear all items from the cart?")) {
+                cart = [];
+                renderCart();
+                showToast("Cart cleared.", 'warning');
+            }
+        }
+        
+        // ================= PAYMENT & SALE FINALIZATION =================
+        function openPaymentModal() {
+            if (cart.length === 0) {
+                showToast("Cart is empty!", 'error');
+                return;
+            }
+            const total = cart.reduce((sum, item) => sum + item.subtotal, 0);
+            
+            document.getElementById('pay-amount').textContent = formatCurrency(total);
+            document.getElementById('payment-modal').classList.remove('hidden');
+            
+            const payQrImg = document.getElementById('pay-qr-img');
+            const payQrErr = document.getElementById('pay-qr-err');
+            if (qrCode) {
+                payQrImg.src = qrCode;
+                payQrImg.classList.remove('hidden');
+                payQrErr.classList.add('hidden');
+            } else {
+                payQrImg.classList.add('hidden');
+                payQrErr.classList.remove('hidden');
+            }
+            
+            document.getElementById('payment-mode').addEventListener('change', (e) => {
+                document.getElementById('qr-area').classList.toggle('hidden', e.target.value !== 'upi');
+            });
+            document.getElementById('qr-area').classList.toggle('hidden', document.getElementById('payment-mode').value !== 'upi');
+        }
+
+        function finishSale() {
+            const total = cart.reduce((sum, item) => sum + item.subtotal, 0);
+            const mode = document.getElementById('payment-mode').value;
+            
+            if (total === 0) {
+                showToast("Sale amount is zero!", 'error');
+                closePaymentModal();
+                return;
+            }
+            
+            // 1. Deduct Stock
+            cart.forEach(item => {
+                if(!inventory[item.id]) inventory[item.id] = {kg: 0, unit: 0};
+                
+                if (item.unit === 'unit') {
+                    inventory[item.id].unit = Math.max(0, inventory[item.id].unit - item.reqKgUnit);
+                } else { // kg or g
+                    inventory[item.id].kg = Math.max(0, inventory[item.id].kg - item.reqKgUnit);
+                }
+            });
+
+            // 2. Log Sale
+            const sale = {
+                id: Date.now().toString(),
+                timestamp: new Date().toISOString(),
+                items: JSON.parse(JSON.stringify(cart)), // Deep copy of cart
+                total: total,
+                mode: mode
+            };
+            salesHistory.push(sale);
+
+            // 3. Save, Clear, & Notify
+            save();
+            const receiptCart = JSON.parse(JSON.stringify(cart)); // Get items before clearing
+            cart = [];
+            renderCart();
+            renderMenu(); // Update low stock badges
+            
+            closePaymentModal();
+            showToast(`Sale completed! Total: ${formatCurrency(total)}`, 'success');
+            
+            // Optional: Auto print receipt
+            printBill(receiptCart, sale.id, sale.timestamp, sale.mode, total);
+        }
+
+        // ================= PRINT RECEIPT (BILINGUAL) =================
+        function printBill(finalCart = cart, saleId = 'DRAFT', timestamp = new Date().toISOString(), mode = 'N/A', total = cart.reduce((sum, item) => sum + item.subtotal, 0)) {
+            if (finalCart.length === 0) {
+                showToast("No items to print.", 'error');
+                return;
+            }
+
+            const printArea = document.createElement('div');
+            printArea.className = 'printable-bill-area';
+            
+            const findItem = (id) => menuItems.find(i => i.id === id);
+
+            let itemsHtml = finalCart.map(item => {
+                const product = findItem(item.id);
+                const nameEn = product?.nameEn || item.name;
+                const nameTa = product?.nameTa || nameEn;
+                
+                return `
+                    <div class="flex justify-between">
+                        <span class="w-1/2">${nameEn} (${nameTa})</span>
+                        <span class="w-1/4 text-center">${item.label}</span>
+                        <span class="w-1/4 text-right">${formatCurrency(item.subtotal)}</span>
+                    </div>
+                `;
+            }).join('');
+
+            printArea.innerHTML = `
+                <div class="text-center">
+                    <h1 class="text-lg font-bold">V S TRADERS (வி எஸ் டிரேடர்ஸ்)</h1>
+                    <p class="text-[10px]">Your kangayam, Tiruppur, Tamil Nadu (உங்கள் முகவரி)</p>
+                    <p class="text-[10px]">GSTIN: 33vstraders</p>
+                    <p class="text-[10px]">Ph: 99999 99999 | ${new Date(timestamp).toLocaleDateString()} (${new Date(timestamp).toLocaleTimeString()})</p>
+                    <p class="text-[10px] font-bold">Bill ID: ${saleId}</p>
+                </div>
+                <hr class="border-t border-dashed my-1">
+                <div class="flex font-bold text-[11px]">
+                    <span class="w-1/2">Item / பொருள்</span>
+                    <span class="w-1/4 text-center">Qty / அளவு</span>
+                    <span class="w-1/4 text-right">Amt / தொகை</span>
+                </div>
+                <hr class="border-t border-dashed my-1">
+                ${itemsHtml}
+                <hr class="border-t border-dashed my-1">
+                <div class="flex justify-between font-bold text-md mt-1">
+                    <span>TOTAL / மொத்தத் தொகை:</span>
+                    <span>${formatCurrency(total)}</span>
+                </div>
+                <p class="text-[10px] mt-1">Paid By / பணம் செலுத்திய முறை: ${mode.toUpperCase()}</p>
+                <hr class="border-t border-dashed my-1">
+                <p class="text-center text-[10px] font-bold">Thank You! Visit Again! (நன்றி! மீண்டும் வருக!)</p>
+            `;
+
+            // Append to body and immediately print
+            document.body.appendChild(printArea);
+            window.print();
+            
+            // Cleanup
+            document.body.removeChild(printArea);
         }
 
 
-        // ==================================== REPORTING ====================================
-
-        /**
-         * Opens the reports selection modal.
-         */
+        // ================= REPORTS =================
         function openReportsModal() {
             const modal = document.getElementById('generic-modal');
-            const title = document.getElementById('modal-title');
             const body = document.getElementById('modal-body');
+            const title = document.getElementById('modal-title');
+            
+            modal.classList.remove('hidden'); modal.classList.add('flex');
+            title.textContent = "Sales & Inventory Reports";
 
-            title.textContent = 'Sales and Stock Reports (விற்பனை மற்றும் பங்கு அறிக்கைகள்)';
             body.innerHTML = `
-                <div class="space-y-4">
-                    <button onclick="generateReport('dailyStock')" class="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-3 px-4 rounded-lg transition duration-200">
-                        Generate Daily Stock Report (தினசரி பங்கு அறிக்கை)
-                    </button>
-                    <button onclick="generateReport('monthlySales')" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg transition duration-200">
-                        Generate All Sales History Report (அனைத்து விற்பனை அறிக்கை)
-                    </button>
-                    <button onclick="generateReport('detailedSales')" class="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-4 rounded-lg transition duration-200">
-                        Generate Detailed Sales Report (விற்பனை விரிவான அறிக்கை)
-                    </button>
-                    <button onclick="generateReport('itemSummary')" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-lg transition duration-200">
-                        Generate Item-wise Sales Summary (பொருள் வாரியாக விற்பனை)
-                    </button>
-                    <button onclick="generateReport('stockMovement')" class="w-full bg-amber-600 hover:bg-amber-700 text-white font-bold py-3 px-4 rounded-lg transition duration-200">
-                        Generate Stock Movement Report (பங்கு மாற்றம்)
-                    </button>
-                    <div id="report-message" class="text-center mt-4 text-sm text-gray-600">Reports will be opened in a print-friendly window (Print to PDF).</div>
+                <div class="space-y-6">
+                    <div class="grid grid-cols-3 gap-4">
+                        <button onclick="generateReport('daily')" class="bg-blue-600 text-white p-4 rounded-lg shadow hover:bg-blue-700">Daily Sales</button>
+                        <button onclick="generateReport('monthly')" class="bg-indigo-600 text-white p-4 rounded-lg shadow hover:bg-indigo-700">Monthly Sales</button>
+                        <button onclick="generateReport('stock')" class="bg-yellow-600 text-white p-4 rounded-lg shadow hover:bg-yellow-700">Low Stock Report</button>
+                        <button onclick="generateReport('detailed-stock')" class="bg-green-600 text-white p-4 rounded-lg shadow hover:bg-green-700 col-span-3">Full Stock & Valuation Report</button>
+                    </div>
+                    
+                    <div id="report-output-preview" class="p-4 bg-gray-50 border rounded-lg max-h-96 overflow-y-auto">
+                        <p class="text-gray-500 text-center">Select a report type above to generate a preview.</p>
+                    </div>
+
                 </div>
             `;
-            modal.classList.add('flex');
-            modal.classList.remove('hidden');
         }
 
-        /**
-         * Generates the requested report and prepares it for printing (PDF).
-         */
         function generateReport(type) {
-            document.getElementById('report-message').textContent = 'Generating report...';
-            document.getElementById('report-message').classList.add('animate-pulse');
-
+            const preview = document.getElementById('report-output-preview');
+            let reportTitle = '';
             let reportHtml = '';
-            
-            if (type === 'dailyStock') {
-                reportHtml = generateDailyStockReport();
-            } else if (type === 'monthlySales') {
-                reportHtml = generateAllSalesHistoryReport();
-            } else if (type === 'detailedSales') {
-                reportHtml = generateDetailedSalesReport();
-            } else if (type === 'itemSummary') {
-                reportHtml = generateItemWiseSalesSummary();
-            } else if (type === 'stockMovement') {
-                reportHtml = generateStockMovementReport();
-            }
 
-            document.getElementById('report-content').innerHTML = reportHtml;
-            document.getElementById('report-message').classList.remove('animate-pulse');
-            document.getElementById('report-message').textContent = 'Report ready. Opening print window...';
-            
-            // Wait for DOM update before printing
-            setTimeout(() => window.print(), 300);
-            
-            // Close modal after print initiated
-            setTimeout(() => {
-                document.getElementById('generic-modal').classList.add('hidden');
-            }, 500);
-        }
+            const data = salesHistory.filter(s => s.total > 0);
 
-        /**
-         * Formats the Daily Stock Report from in-memory inventory.
-         */
-        function generateDailyStockReport() {
-            const date = new Date().toLocaleDateString();
-            
-            let html = `
-                <div class="p-6">
-                    <h1 class="text-3xl font-extrabold text-center mb-1">V S TRADERS</h1>
-                    <h2 class="text-xl font-semibold text-center mb-4">Daily Stock Report (${date})</h2>
-                    <hr class="border-t-2 border-black mb-4">
-                    <div class="flex font-bold mb-1">
-                        <span class="w-1/2">Item (பொருள்)</span>
-                        <span class="w-1/4 text-center">Stock (Kg)</span>
-                        <span class="w-1/4 text-right">Stock (Units)</span>
-                    </div>
-                    <hr class="border-t border-gray-400 mb-1">
-            `;
-
-            menuItems.forEach(item => {
-                const stockKg = inventory[item.id]?.stockKg || 0;
-                const stockUnits = inventory[item.id]?.stockUnits || 0;
+            if (type === 'daily') {
+                reportTitle = `Daily Sales Report: ${new Date().toLocaleDateString()}`;
+                const dailyData = data.filter(s => new Date(s.timestamp).toDateString() === new Date().toDateString());
+                reportHtml = generateSalesTable(dailyData, 'Sale Breakdown for Today');
+            } else if (type === 'monthly') {
+                reportTitle = `Monthly Sales Report: ${new Date().toLocaleString('default', { month: 'long', year: 'numeric' })}`;
+                const startOfMonth = new Date();
+                startOfMonth.setDate(1);
+                startOfMonth.setHours(0, 0, 0, 0);
                 
-                html += `
-                    <div class="flex text-sm py-1">
-                        <span class="w-1/2">${item.nameEn} (${item.nameTa})</span>
-                        <span class="w-1/4 text-center">${stockKg.toFixed(2)}</span>
-                        <span class="w-1/4 text-right">${stockUnits}</span>
-                    </div>
+                const monthlyData = data.filter(s => new Date(s.timestamp) >= startOfMonth);
+                reportHtml = generateSalesSummary(monthlyData, 'Monthly Revenue Summary');
+            } else if (type === 'stock') {
+                reportTitle = "Low Stock Inventory Report";
+                reportHtml = generateLowStockReport();
+            } else if (type === 'detailed-stock') {
+                reportTitle = "Detailed Current Stock & Valuation Report";
+                reportHtml = generateDetailedStockReport();
+            }
+
+            preview.innerHTML = reportHtml;
+            
+            // Set up the full print view
+            const printContainer = document.getElementById('report-print-container');
+            const printArea = document.getElementById('report-print');
+            printArea.innerHTML = `
+                <h2 class="text-xl font-bold mb-4 text-center">${reportTitle}</h2>
+                ${reportHtml}
+                <p class="text-xs text-gray-500 mt-6 text-center">Report Generated: ${new Date().toLocaleString()}</p>
+            `;
+            printContainer.classList.remove('hidden');
+            closeGenericModal();
+        }
+
+        function generateSalesTable(salesData, subtitle) {
+            let totalRevenue = 0;
+            let totalCash = 0;
+            let totalUpi = 0;
+
+            const rows = salesData.map(sale => {
+                totalRevenue += sale.total;
+                if (sale.mode === 'cash') totalCash += sale.total;
+                if (sale.mode === 'upi') totalUpi += sale.total;
+                
+                const time = new Date(sale.timestamp).toLocaleTimeString();
+                const itemsList = sale.items.map(i => `${i.name} (${i.label})`).join(', ');
+
+                return `
+                    <tr class="hover:bg-gray-50">
+                        <td class="p-2">${time}</td>
+                        <td class="p-2">${itemsList}</td>
+                        <td class="p-2 text-right">${formatCurrency(sale.total)}</td>
+                        <td class="p-2 text-center text-xs uppercase">${sale.mode}</td>
+                    </tr>
                 `;
-            });
+            }).join('');
 
-            html += `
-                    <hr class="border-t-2 border-black mt-4">
-                    <p class="text-center text-xs mt-4">Report Generated by POS System.</p>
+            return `
+                <h3 class="font-bold text-lg mb-2">${subtitle}</h3>
+                <div class="flex justify-around mb-4 p-3 bg-green-100 rounded-lg">
+                    <p class="font-bold text-green-800">Total Revenue: ${formatCurrency(totalRevenue)}</p>
+                    <p class="text-blue-800">Cash: ${formatCurrency(totalCash)}</p>
+                    <p class="text-purple-800">UPI: ${formatCurrency(totalUpi)}</p>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full text-sm text-left border rounded-lg">
+                        <thead class="bg-gray-200 text-xs uppercase">
+                            <tr>
+                                <th class="p-2">Time</th>
+                                <th class="p-2">Items</th>
+                                <th class="p-2 text-right">Amount</th>
+                                <th class="p-2 text-center">Mode</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y">${rows}</tbody>
+                    </table>
                 </div>
             `;
-            return html;
         }
+        
+        function generateSalesSummary(salesData, subtitle) {
+            const summary = salesData.reduce((acc, sale) => {
+                const dateKey = new Date(sale.timestamp).toLocaleDateString();
+                if (!acc[dateKey]) {
+                    acc[dateKey] = { total: 0, cash: 0, upi: 0, card: 0 };
+                }
+                acc[dateKey].total += sale.total;
+                acc[dateKey][sale.mode] = (acc[dateKey][sale.mode] || 0) + sale.total;
+                return acc;
+            }, {});
 
-        /**
-         * Formats the All Sales History Report from in-memory salesHistory.
-         */
-        function generateAllSalesHistoryReport() {
-            let totalSales = salesHistory.reduce((sum, record) => sum + record.totalAmount, 0);
-
-            let html = `
-                <div class="p-6">
-                    <h1 class="text-3xl font-extrabold text-center mb-1">V S TRADERS</h1>
-                    <h2 class="text-xl font-semibold text-center mb-4">All Sales History Report (Current Session)</h2>
-                    <hr class="border-t-2 border-black mb-4">
-                    <div class="flex font-bold mb-1">
-                        <span class="w-1/3">Date/Time</span>
-                        <span class="w-1/3 text-center">Payment Mode</span>
-                        <span class="w-1/3 text-right">Amount (விலை)</span>
-                    </div>
-                    <hr class="border-t border-gray-400 mb-1">
-            `;
-
-            if (salesHistory.length === 0) {
-                html += '<p class="text-center py-4 text-sm">No sales recorded during this session.</p>';
-            } else {
-                salesHistory.forEach(record => {
-                    const dateString = record.timestamp.toLocaleString();
-                    html += `
-                        <div class="flex text-sm py-1">
-                            <span class="w-1/3">${dateString}</span>
-                            <span class="w-1/3 text-center">${record.paymentMode.toUpperCase()}</span>
-                            <span class="w-1/3 text-right">${formatCurrency(record.totalAmount)}</span>
-                        </div>
-                    `;
-                });
-            }
-
-            html += `
-                    <hr class="border-t-2 border-black mt-4">
-                    <div class="flex justify-between font-bold text-xl mt-2">
-                        <span>Total Sales (மொத்தம்)</span>
-                        <span>${formatCurrency(totalSales)}</span>
-                    </div>
-                    <hr class="border-t-2 border-black mt-4">
-                    <p class="text-center text-xs mt-4">Report Generated by POS System.</p>
-                </div>
-            `;
-            return html;
-        }
-
-        function generateDetailedSalesReport() {
-            let html = `
-                <div class="p-6">
-                    <h1 class="text-3xl font-extrabold text-center mb-1">V S TRADERS</h1>
-                    <h2 class="text-xl font-semibold text-center mb-4">Detailed Sales Report</h2>
-                    <hr class="border-t-2 border-black mb-4">
-            `;
-            if (salesHistory.length === 0) {
-                html += '<p class="text-center py-4 text-sm">No sales recorded during this session.</p>';
-            } else {
-                salesHistory.forEach(record => {
-                    html += `
-                        <div class="mb-4">
-                            <div class="flex font-bold mb-1">
-                                <span class="w-1/2">Sale: ${record.timestamp.toLocaleString()}</span>
-                                <span class="w-1/2 text-right">Mode: ${record.paymentMode.toUpperCase()}</span>
-                            </div>
-                            <div class="flex font-bold">
-                                <span class="w-1/2">Item (பொருள்)</span>
-                                <span class="w-1/4 text-center">Qty/Unit</span>
-                                <span class="w-1/4 text-right">Line Total</span>
-                            </div>
-                            <hr class="border-t border-gray-400 mb-1">
-                    `;
-                    record.items.forEach(it => {
-                        const fullItem = menuItems.find(m => m.id === it.id) || { nameTa: '' };
-                        const quantityText = it.unit === 'units' ? `${it.quantity} Unit(s)` : `${it.quantity} ${it.unit}`;
-                        html += `
-                            <div class="flex text-sm py-1">
-                                <span class="w-1/2">${it.name} (${fullItem.nameTa})</span>
-                                <span class="w-1/4 text-center">${quantityText}</span>
-                                <span class="w-1/4 text-right">${formatCurrency(it.price)}</span>
-                            </div>
-                        `;
-                    });
-                    html += `
-                            <div class="flex justify-between font-bold mt-2">
-                                <span>Sale Total</span>
-                                <span>${formatCurrency(record.totalAmount)}</span>
-                            </div>
-                            <hr class="border-t border-gray-300 mt-2">
-                        </div>
-                    `;
-                });
-            }
-            html += `
-                    <p class="text-center text-xs mt-4">Report Generated by POS System.</p>
-                </div>
-            `;
-            return html;
-        }
-
-        function generateItemWiseSalesSummary() {
-            const summary = {};
-            salesHistory.forEach(record => {
-                record.items.forEach(it => {
-                    if (!summary[it.id]) summary[it.id] = { qtyKg: 0, qtyUnits: 0, revenue: 0 };
-                    if (it.unit === 'grams') summary[it.id].qtyKg += (it.quantity || 0) / 1000;
-                    else if (it.unit === 'kilograms') summary[it.id].qtyKg += it.quantity || 0;
-                    else if (it.unit === 'units') summary[it.id].qtyUnits += it.quantity || 0;
-                    summary[it.id].revenue += it.price || 0;
-                });
-            });
-            let html = `
-                <div class="p-6">
-                    <h1 class="text-3xl font-extrabold text-center mb-1">V S TRADERS</h1>
-                    <h2 class="text-xl font-semibold text-center mb-4">Item-wise Sales Summary</h2>
-                    <hr class="border-t-2 border-black mb-4">
-                    <div class="flex font-bold mb-1">
-                        <span class="w-2/5">Item (பொருள்)</span>
-                        <span class="w-1/5 text-center">Sold (Kg)</span>
-                        <span class="w-1/5 text-center">Sold (Units)</span>
-                        <span class="w-1/5 text-right">Revenue</span>
-                    </div>
-                    <hr class="border-t border-gray-400 mb-1">
-            `;
-            const ids = Object.keys(summary);
-            if (ids.length === 0) {
-                html += '<p class="text-center py-4 text-sm">No sales recorded during this session.</p>';
-            } else {
-                ids.forEach(id => {
-                    const m = menuItems.find(mi => mi.id === id) || { nameEn: id, nameTa: '' };
-                    const s = summary[id];
-                    html += `
-                        <div class="flex text-sm py-1">
-                            <span class="w-2/5">${m.nameEn} (${m.nameTa})</span>
-                            <span class="w-1/5 text-center">${s.qtyKg.toFixed(2)}</span>
-                            <span class="w-1/5 text-center">${s.qtyUnits}</span>
-                            <span class="w-1/5 text-right">${formatCurrency(s.revenue)}</span>
-                        </div>
-                    `;
-                });
-            }
-            html += `
-                    <hr class="border-t-2 border-black mt-4">
-                    <p class="text-center text-xs mt-4">Report Generated by POS System.</p>
-                </div>
-            `;
-            return html;
-        }
-
-        function generateStockMovementReport() {
-            let html = `
-                <div class="p-6">
-                    <h1 class="text-3xl font-extrabold text-center mb-1">V S TRADERS</h1>
-                    <h2 class="text-xl font-semibold text-center mb-4">Stock Movement Report</h2>
-                    <hr class="border-t-2 border-black mb-4">
-                    <div class="flex font-bold mb-1">
-                        <span class="w-2/5">Item (பொருள்)</span>
-                        <span class="w-1/5 text-center">Initial Kg</span>
-                        <span class="w-1/5 text-center">Current Kg</span>
-                        <span class="w-1/5 text-right">Change Kg</span>
-                    </div>
-                    <hr class="border-t border-gray-400 mb-1">
-            `;
-            menuItems.forEach(item => {
-                const init = initialInventory[item.id]?.stockKg;
-                const cur = inventory[item.id]?.stockKg;
-                const hasInit = typeof init === 'number';
-                const hasCur = typeof cur === 'number';
-                const i = hasInit ? init : 0;
-                const c = hasCur ? cur : 0;
-                const ch = hasInit && hasCur ? (i - c) : 0;
-                html += `
-                    <div class="flex text-sm py-1">
-                        <span class="w-2/5">${item.nameEn} (${item.nameTa})</span>
-                        <span class="w-1/5 text-center">${hasInit ? i.toFixed(2) : 'N/A'}</span>
-                        <span class="w-1/5 text-center">${hasCur ? c.toFixed(2) : 'N/A'}</span>
-                        <span class="w-1/5 text-right">${hasInit && hasCur ? ch.toFixed(2) : 'N/A'}</span>
-                    </div>
+            let totalRevenue = 0;
+            const rows = Object.keys(summary).sort((a, b) => new Date(a) - new Date(b)).map(dateKey => {
+                const daySummary = summary[dateKey];
+                totalRevenue += daySummary.total;
+                return `
+                    <tr class="hover:bg-gray-50">
+                        <td class="p-2 font-medium">${dateKey}</td>
+                        <td class="p-2 text-right font-bold">${formatCurrency(daySummary.total)}</td>
+                        <td class="p-2 text-right">${formatCurrency(daySummary.cash)}</td>
+                        <td class="p-2 text-right">${formatCurrency(daySummary.upi)}</td>
+                        <td class="p-2 text-right">${formatCurrency(daySummary.card)}</td>
+                    </tr>
                 `;
-            });
-            html += `
-                    <hr class="border-t-2 border-black mt-4">
-                    <p class="text-center text-xs mt-4">Report Generated by POS System.</p>
+            }).join('');
+            
+            return `
+                <h3 class="font-bold text-lg mb-2">${subtitle}</h3>
+                <div class="text-xl font-bold text-center p-3 mb-4 bg-indigo-100 rounded-lg">Total Monthly Revenue: ${formatCurrency(totalRevenue)}</div>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full text-sm text-left border rounded-lg">
+                        <thead class="bg-gray-200 text-xs uppercase">
+                            <tr>
+                                <th class="p-2">Date</th>
+                                <th class="p-2 text-right">Total</th>
+                                <th class="p-2 text-right">Cash</th>
+                                <th class="p-2 text-right">UPI</th>
+                                <th class="p-2 text-right">Card</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y">${rows}</tbody>
+                    </table>
                 </div>
             `;
-            return html;
+        }
+        
+        function generateLowStockReport() {
+            const lowStockThresholdKg = 1; // 1 Kg
+            const lowStockThresholdUnit = 5; // 5 Units
+            
+            const lowStockItems = menuItems.filter(item => {
+                const inv = inventory[item.id] || {kg: 0, unit: 0};
+                return (inv.kg > 0 && inv.kg < lowStockThresholdKg) || 
+                       (inv.unit > 0 && inv.unit < lowStockThresholdUnit);
+            });
+            
+            if (lowStockItems.length === 0) {
+                return `<p class="text-green-600 text-center p-4">✅ All items are above the low stock threshold.</p>`;
+            }
+
+            const rows = lowStockItems.map(item => {
+                const inv = inventory[item.id] || {kg: 0, unit: 0};
+                const kgStatus = inv.kg < lowStockThresholdKg && item.priceKg > 0 ? `<span class="bg-red-200 text-red-800 p-1 rounded text-xs">${inv.kg.toFixed(2)} Kg</span>` : `${inv.kg.toFixed(2)} Kg`;
+                const unitStatus = inv.unit < lowStockThresholdUnit && item.priceUnit > 0 ? `<span class="bg-red-200 text-red-800 p-1 rounded text-xs">${inv.unit} Units</span>` : `${inv.unit} Units`;
+                
+                return `
+                    <tr class="hover:bg-red-50">
+                        <td class="p-2 font-medium">${item.nameEn}</td>
+                        <td class="p-2">${item.nameTa}</td>
+                        <td class="p-2 text-center">${kgStatus}</td>
+                        <td class="p-2 text-center">${unitStatus}</td>
+                    </tr>
+                `;
+            }).join('');
+
+            return `
+                <div class="overflow-x-auto">
+                    <table class="min-w-full text-sm text-left border rounded-lg">
+                        <thead class="bg-yellow-200 text-xs uppercase">
+                            <tr>
+                                <th class="p-2">Item (En)</th>
+                                <th class="p-2">Item (Ta)</th>
+                                <th class="p-2 text-center">Kg Stock</th>
+                                <th class="p-2 text-center">Unit Stock</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y">${rows}</tbody>
+                    </table>
+                </div>
+                <p class="text-xs text-gray-500 mt-2">Threshold: < 1 Kg or < 5 Units.</p>
+            `;
         }
 
+        function generateDetailedStockReport() {
+            let totalStockValue = 0;
+
+            const rows = menuItems.map(item => {
+                const inv = inventory[item.id] || { kg: 0, unit: 0 };
+                
+                // Calculate stock value for Kg (if applicable)
+                const kgStock = inv.kg || 0;
+                const kgPrice = item.priceKg || 0;
+                const kgValue = kgStock * kgPrice;
+                
+                // Calculate stock value for Units (if applicable)
+                const unitStock = inv.unit || 0;
+                const unitPrice = item.priceUnit || 0;
+                const unitValue = unitStock * unitPrice;
+
+                const totalItemValue = kgValue + unitValue;
+                totalStockValue += totalItemValue;
+
+                return `
+                    <tr class="hover:bg-gray-50">
+                        <td class="p-2 font-medium">${item.nameEn}<div class="text-xs text-gray-500">${item.nameTa}</div></td>
+                        <td class="p-2 text-right">${kgPrice > 0 ? formatCurrency(kgPrice) : '-'}</td>
+                        <td class="p-2 text-right">${kgPrice > 0 ? kgStock.toFixed(2) + ' Kg' : '-'}</td>
+                        <td class="p-2 text-right text-green-700 font-bold">${kgPrice > 0 ? formatCurrency(kgValue) : '-'}</td>
+                        
+                        <td class="p-2 text-right">${unitPrice > 0 ? formatCurrency(unitPrice) : '-'}</td>
+                        <td class="p-2 text-right">${unitPrice > 0 ? unitStock + ' Pcs' : '-'}</td>
+                        <td class="p-2 text-right text-blue-700 font-bold">${unitPrice > 0 ? formatCurrency(unitValue) : '-'}</td>
+
+                        <td class="p-2 text-right bg-gray-100 font-extrabold text-lg">${formatCurrency(totalItemValue)}</td>
+                    </tr>
+                `;
+            }).join('');
+
+            return `
+                <h3 class="font-bold text-lg mb-2">Inventory Breakdown and Valuation (Selling Price)</h3>
+                <div class="text-2xl font-bold text-center p-4 mb-4 bg-green-100 rounded-lg border border-green-300">
+                    Total Estimated Inventory Value (Selling Price): <span class="text-green-800">${formatCurrency(totalStockValue)}</span>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full text-sm text-left border rounded-lg">
+                        <thead class="bg-gray-200 text-xs uppercase">
+                            <tr>
+                                <th class="p-2" rowspan="2">Item Name</th>
+                                <th class="p-2 text-center" colspan="3">Kilogram (Kg) Stock</th>
+                                <th class="p-2 text-center" colspan="3">Unit (Pcs) Stock</th>
+                                <th class="p-2 text-center" rowspan="2">Total Item Value</th>
+                            </tr>
+                            <tr class="bg-gray-300 text-xs uppercase">
+                                <th class="p-2 text-right">Price/Kg</th>
+                                <th class="p-2 text-right">Qty (Kg)</th>
+                                <th class="p-2 text-right">Value (Kg)</th>
+                                <th class="p-2 text-right">Price/Pc</th>
+                                <th class="p-2 text-right">Qty (Pcs)</th>
+                                <th class="p-2 text-right">Value (Pcs)</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y">${rows}</tbody>
+                        <tfoot class="bg-gray-200 font-bold">
+                            <tr>
+                                <td class="p-2 text-right" colspan="7">GRAND TOTAL (Selling Price)</td>
+                                <td class="p-2 text-right text-xl text-green-800">${formatCurrency(totalStockValue)}</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            `;
+        }
+        
+        // ================= PDF GENERATION =================
+        function generateReportPdf() {
+            const { jsPDF } = window.jspdf;
+            const element = document.getElementById('report-print');
+            const title = element.querySelector('h2').textContent;
+
+            html2canvas(element, { scale: 2 }).then(canvas => {
+                const imgData = canvas.toDataURL('image/jpeg', 0.9);
+                const pdf = new jsPDF('p', 'mm', 'a4');
+                const imgWidth = 210; 
+                const pageHeight = 295;
+                const imgHeight = canvas.height * imgWidth / canvas.width;
+                let heightLeft = imgHeight;
+                let position = 0;
+
+                pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+                heightLeft -= pageHeight;
+
+                while (heightLeft >= 0) {
+                    position = heightLeft - imgHeight;
+                    pdf.addPage();
+                    pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+                    heightLeft -= pageHeight;
+                }
+                pdf.save(`${title.replace(/[^a-z0-9]/gi, '_')}.pdf`);
+                showToast("PDF report generated.");
+            }).catch(error => {
+                console.error("PDF generation failed:", error);
+                showToast("Failed to generate PDF.", 'error');
+            });
+        }
+        
+        // Initialize the app when the DOM is ready
+        document.addEventListener('DOMContentLoaded', init);
     </script>
 </body>
 </html>
