@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>V S TRADERS - POS with Images & Reports</title>
+    <title>V A S TRADERS - POS with Images & Reports</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         /* ==================== PRINT STYLES FIXES ==================== */
@@ -100,7 +100,7 @@
 
     <header class="fixed top-0 left-0 right-0 bg-white border-b shadow-md p-3 z-30 flex justify-between items-center flex-wrap">
         <div class="flex items-center space-x-4 mb-2 md:mb-0">
-            <h1 class="text-xl font-bold text-green-800">V S TRADERS</h1>
+            <h1 class="text-xl font-bold text-green-800">V A S TRADERS</h1>
             <p class="text-xs text-gray-500 hidden sm:block">Inventory & POS System</p>
         </div>
         
@@ -275,7 +275,7 @@
             try {
                 const imgData = await resizeImage(fileInput.files[0], 150, 0.7);
                 qrCode = imgData;
-                localStorage.setItem('vs_qr', qrCode);
+                localStorage.setItem('_qr', qrCode);
                 showToast("QR Code Saved!");
                 openQrModal();
             } catch(e) {
@@ -916,7 +916,7 @@
 
         function shareBillOnWhatsApp(finalCart, total) {
             const findItem = (id) => menuItems.find(i => i.id === id);
-            const shopName = "V S TRADERS (வி எஸ் டிரேடர்ஸ்)";
+            const shopName = "V A S TRADERS (வி எ எஸ் டிரேடர்ஸ்)";
             
             let message = `*${shopName} Bill Summary*\n`;
             message += `\n*Items / பொருள்*\n`;
@@ -976,7 +976,7 @@
 
             printArea.innerHTML = `
                 <div class="text-center">
-                    <h1 class="text-lg font-bold">V S TRADERS (வி எஸ் டிரேடர்ஸ்)</h1>
+                    <h1 class="text-lg font-bold">V A S TRADERS (வி எ எஸ் டிரேடர்ஸ்)</h1>
                     <p class="text-[10px]">Your Address Line 1, Tiruppur, Tamil Nadu (உங்கள் முகவரி)</p>
                     <p class="text-[10px]">GSTIN: 33AAAAA9999A1Z1</p>
                     <p class="text-[10px]">Ph: 99999 99999 | ${new Date(timestamp).toLocaleDateString()} (${new Date(timestamp).toLocaleTimeString()})</p>
@@ -1326,3 +1326,4 @@
     </script>
 </body>
 </html>
+
